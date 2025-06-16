@@ -9,6 +9,12 @@ import (
 	stdmath "math"
 )
 
+// Constants for player movement
+const (
+	rotationPerSecond = 3.0  // Rotation speed in radians per second
+	maxAcceleration   = 10.0 // Maximum acceleration value
+)
+
 // Player represents the player entity
 type Player struct {
 	sprite         *ebiten.Image
