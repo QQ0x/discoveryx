@@ -4,7 +4,7 @@
 package main
 
 import (
-	"discoveryx/cmd/mobile"
+	"discoveryx/mobile"
 )
 
 func main() {

@@ -3,16 +3,10 @@ package player
 import (
 	"discoveryx/internal/assets"
 	"discoveryx/internal/core/ecs"
+	"discoveryx/internal/input"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
-)
-
-var curAcceleration float64
-
-const (
-	rotationPerSecond = stdmath.Pi
-	maxAcceleration   = 8.0
 )
 
 // Player represents the player entity
@@ -22,6 +16,7 @@ type Player struct {
 	rotation       float64
 	position       math.Vector
 	playerVelocity float64 // Player speed
+	curAcceleration float64 // Current acceleration
 }
 
 // NewPlayer creates a new player instance
@@ -60,44 +55,50 @@ func (p *Player) Draw(screen *ebiten.Image) {
 	screen.DrawImage(p.sprite, op)
 }
 
-// Update updates the player state
-func (p *Player) Update() error {
-	// Handle player movement
-
+// HandleRotation updates the player's rotation based on input
+func (p *Player) HandleRotation(keyboard input.KeyboardHandler) {
 	speed := rotationPerSecond / float64(ebiten.TPS())
 
-	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+	if keyboard.IsKeyPressed(input.KeyLeft) {
 		p.rotation -= speed
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+	if keyboard.IsKeyPressed(input.KeyRight) {
 		p.rotation += speed
 	}
-
-	p.accelerate()
-
-	return nil
 }
 
-// accelerate handles player acceleration
-func (p *Player) accelerate() {
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		if curAcceleration < maxAcceleration {
-			curAcceleration = p.playerVelocity + 4
+// HandleAcceleration handles player acceleration and updates position
+func (p *Player) HandleAcceleration(keyboard input.KeyboardHandler) {
+	if keyboard.IsKeyPressed(input.KeyUp) {
+		if p.curAcceleration < maxAcceleration {
+			p.curAcceleration = p.playerVelocity + 4
 		}
 
-		if curAcceleration >= 8 {
-			curAcceleration = 8
+		if p.curAcceleration >= 8 {
+			p.curAcceleration = 8
 		}
 
-		p.playerVelocity = curAcceleration
+		p.playerVelocity = p.curAcceleration
 
 		// Move in the direction we are pointing
-		dx := stdmath.Sin(p.rotation) * curAcceleration
-		dy := stdmath.Cos(p.rotation) * -curAcceleration
+		dx := stdmath.Sin(p.rotation) * p.curAcceleration
+		dy := stdmath.Cos(p.rotation) * -p.curAcceleration
 
 		// Move the player on screen
 		p.position.X += dx
 		p.position.Y += dy
 	}
+}
+
+// Update updates the player state
+func (p *Player) Update() error {
+	// Get keyboard handler from input manager
+	keyboard := input.GetKeyboard()
+
+	// Handle player movement
+	p.HandleRotation(keyboard)
+	p.HandleAcceleration(keyboard)
+
+	return nil
 }
