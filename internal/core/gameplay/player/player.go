@@ -60,11 +60,12 @@ func (p *Player) Draw(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 
 	// Scale to 1/3 of original size
-	op.GeoM.Scale(1.0/3.0, 1.0/3.0)
+	const scale = 1.0 / 3.0
+	op.GeoM.Scale(scale, scale)
 
 	// The following sequence ensures rotation around the center of the sprite:
 	// 1. Move to origin (center the sprite at 0,0)
-	op.GeoM.Translate(-halfW, -halfH)
+	op.GeoM.Translate(-halfW*scale, -halfH*scale)
 
 	// 2. Rotate around center point (which is now at 0,0)
 	op.GeoM.Rotate(p.rotation)
@@ -345,7 +346,7 @@ func (p *Player) Update() error {
 			// Calculate a weighted rotation that creates a curved path
 			// The weight depends on the player's velocity - higher velocity means more weight on the previous rotation
 			// This creates wider turns at higher speeds
-			turnWeight := 0.2 + 0.5*turnRadiusFactor // Range from 0.2 (tight turns) to 0.7 (wide turns)
+			turnWeight := 0.2 + 0.3*turnRadiusFactor // Range from 0.2 (tight turns) to 0.5 (wide turns)
 
 			// Calculate the effective rotation for movement, weighted between previous and current rotation
 			// Use the sign of rotationStep to determine whether to add or subtract the turning effect
@@ -419,7 +420,7 @@ func (p *Player) Update() error {
 		// Calculate a weighted rotation that creates a curved path
 		// The weight depends on the player's velocity - higher velocity means more weight on the previous rotation
 		// This creates wider turns at higher speeds
-		turnWeight := 0.2 + 0.5*turnRadiusFactor // Range from 0.2 (tight turns) to 0.7 (wide turns)
+		turnWeight := 0.2 + 0.3*turnRadiusFactor // Range from 0.2 (tight turns) to 0.5 (wide turns)
 
 		// Calculate the effective rotation for movement, weighted between previous and current rotation
 		// Use the sign of rotationStep to determine whether to add or subtract the turning effect
