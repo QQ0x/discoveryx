@@ -3,6 +3,7 @@ package game
 import (
 	// "discoveryx/internal/core/ecs"
 	"discoveryx/internal/core/gameplay/player"
+	"discoveryx/internal/input"
 	"github.com/hajimehoshi/ebiten/v2"
 	"image/color"
 )
@@ -39,6 +40,9 @@ func New() *Game {
 
 // Update updates the game state
 func (g *Game) Update() error {
+	// Update input handlers
+	input.UpdateInput()
+
 	return g.player.Update()
 }
 
@@ -56,6 +60,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	// Update game dimensions
 	g.width = outsideWidth
 	g.height = outsideHeight
+
+	// Update input manager with screen dimensions
+	input.SetScreenDimensions(outsideWidth, outsideHeight)
 
 	return outsideWidth, outsideHeight
 }
