@@ -56,6 +56,7 @@ type DefaultTouchHandler struct {
 	touchIDs          []ebiten.TouchID
 	initialTouchPos   map[ebiten.TouchID]struct{ x, y float64 }
 	currentTouchPos   map[ebiten.TouchID]struct{ x, y float64 }
+	lastSignificantPos map[ebiten.TouchID]struct{ x, y float64 }
 	touchStartTime    map[ebiten.TouchID]time.Time
 	detectedSwipes    map[Direction]bool
 	holdingDirection  map[Direction]bool
@@ -66,6 +67,7 @@ type DefaultTouchHandler struct {
 	swipeDistance     float64
 	currentSwipeSpeed float64
 	activeTouchID     ebiten.TouchID
+	lastDirection     map[ebiten.TouchID]Direction
 }
 
 // NewTouchHandler creates a new default touch handler
@@ -73,9 +75,11 @@ func NewTouchHandler() TouchHandler {
 	return &DefaultTouchHandler{
 		initialTouchPos:   make(map[ebiten.TouchID]struct{ x, y float64 }),
 		currentTouchPos:   make(map[ebiten.TouchID]struct{ x, y float64 }),
+		lastSignificantPos: make(map[ebiten.TouchID]struct{ x, y float64 }),
 		touchStartTime:    make(map[ebiten.TouchID]time.Time),
 		detectedSwipes:    make(map[Direction]bool),
 		holdingDirection:  make(map[Direction]bool),
+		lastDirection:     make(map[ebiten.TouchID]Direction),
 		swipeThreshold:    30.0,                   // Minimum distance for swipe detection
 		swipeDuration:     200 * time.Millisecond, // Maximum duration for swipe detection
 		currentSwipeAngle: 0,
@@ -140,7 +144,9 @@ func (h *DefaultTouchHandler) Update() {
 		x, y := ebiten.TouchPosition(id)
 		h.initialTouchPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 		h.currentTouchPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
+		h.lastSignificantPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 		h.touchStartTime[id] = time.Now()
+		h.lastDirection[id] = DirectionNone
 
 		// Log touch events for right half of screen
 		if x >= halfWidth {
@@ -154,7 +160,9 @@ func (h *DefaultTouchHandler) Update() {
 			// Clean up when touch is released
 			delete(h.initialTouchPos, id)
 			delete(h.currentTouchPos, id)
+			delete(h.lastSignificantPos, id)
 			delete(h.touchStartTime, id)
+			delete(h.lastDirection, id)
 
 			// Reset holding state when touch is released
 			for dir := range h.holdingDirection {
@@ -187,14 +195,16 @@ func (h *DefaultTouchHandler) Update() {
 		}
 
 		// Process touches on the left half
-		initialX := h.initialTouchPos[id].x
-		initialY := h.initialTouchPos[id].y
 		currentX := h.currentTouchPos[id].x
 		currentY := h.currentTouchPos[id].y
 
+		// Use lastSignificantPos for distance and angle calculations
+		referenceX := h.lastSignificantPos[id].x
+		referenceY := h.lastSignificantPos[id].y
+
 		// Calculate distance and direction
-		dx := currentX - initialX
-		dy := currentY - initialY
+		dx := currentX - referenceX
+		dy := currentY - referenceY
 		distance := math.Sqrt(dx*dx + dy*dy)
 
 		// Calculate angle (in radians)
@@ -253,7 +263,18 @@ func (h *DefaultTouchHandler) Update() {
 			// Check if the swipe direction has changed significantly
 			if prevSwipeInfo.Angle != 0 && math.Abs(angle-prevSwipeInfo.Angle) > 0.2 {
 				log.Printf("Swipe direction changed: %f -> %f", prevSwipeInfo.Angle, angle)
+
+				// If the direction has changed and is different from the last recorded direction,
+				// update the lastSignificantPos to the current position
+				if direction != h.lastDirection[id] && h.lastDirection[id] != DirectionNone {
+					h.lastSignificantPos[id] = h.currentTouchPos[id]
+					log.Printf("Updated lastSignificantPos due to direction change: (%f, %f)", 
+						h.currentTouchPos[id].x, h.currentTouchPos[id].y)
+				}
 			}
+
+			// Update the last direction
+			h.lastDirection[id] = direction
 
 			// Check if the swipe is continuing in the same direction (increasing distance)
 			if prevSwipeInfo.Distance > 0 && distance > prevSwipeInfo.Distance {
