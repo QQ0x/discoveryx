@@ -1,0 +1,12 @@
+*~
+.DS_Store
+*.framework
+*.xcframework
+*.aar
+*.jar
+bin/*
+!bin/steam_appid.txt
+
+# mobiles
+.idea
+mobile/android/app/release/
