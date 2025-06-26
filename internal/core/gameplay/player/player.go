@@ -12,13 +12,13 @@ import (
 
 // Constants for player movement
 const (
-	rotationPerSecond = -3.0 // Rotation speed in radians per second
-	maxAcceleration   = 10.0 // Maximum acceleration value
+	rotationPerSecond = -4.5 // Rotation speed in radians per second
+	maxAcceleration   = 15.0 // Maximum acceleration value
 
 	// Constants for smooth movement
-	rotationSmoothingMin    = 0.1                    // smoothing factor at full speed
+	rotationSmoothingMin    = 0.05                   // smoothing factor at full speed
 	rotationSmoothingMax    = 0.4                    // smoothing factor when standing still
-	velocitySmoothingFactor = 0.2                    // faster velocity changes
+	velocitySmoothingFactor = 0.15                   // faster velocity changes
 	minSwipeDuration        = 200 * time.Millisecond // Minimum duration for a swipe to be considered valid
 )
 
@@ -85,14 +85,21 @@ func (p *Player) Draw(screen *ebiten.Image) {
 
 // HandleRotation updates the player's rotation based on input
 func (p *Player) HandleRotation(keyboard input.KeyboardHandler) {
-	speed := rotationPerSecond / float64(ebiten.TPS())
+	speed := stdmath.Abs(rotationPerSecond) / float64(ebiten.TPS())
 
 	if keyboard.IsKeyPressed(input.KeyLeft) {
-		p.rotation -= speed
+		// For left key, we still want to rotate clockwise, so we add to rotation
+		p.rotation += speed
 	}
 
 	if keyboard.IsKeyPressed(input.KeyRight) {
-		p.rotation += speed
+		// For right key, continue to rotate clockwise
+		p.rotation += speed * 2 // Faster rotation for right key to maintain responsiveness
+	}
+
+	// Normalize rotation to keep it within 0 to 2π
+	for p.rotation >= 2*stdmath.Pi {
+		p.rotation -= 2 * stdmath.Pi
 	}
 }
 
@@ -140,9 +147,9 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 
 	p.targetRotation = newRotation
 
-	// Map swipe distance to target velocity. When turning sharply we keep
-	// a minimum velocity so the player doesn't slow down abruptly.
-	newVel := stdmath.Min(swipeInfo.Distance/40.0, maxAcceleration)
+	// Map swipe distance to target velocity. Allow for more abrupt velocity changes
+	// when turning sharply to improve responsiveness.
+	newVel := stdmath.Min(swipeInfo.Distance/15.0, maxAcceleration)
 	if p.isMoving && newVel < p.playerVelocity*0.9 {
 		newVel = p.playerVelocity * 0.9
 	}
@@ -166,9 +173,18 @@ func (p *Player) Update() error {
 	// Smooth rotation towards the target rotation with dynamic factor based
 	// on current velocity. Higher speeds rotate slower to create a curve.
 	rotationDiff := p.targetRotation - p.rotation
-	if rotationDiff > stdmath.Pi {
+
+	// Normalize the difference to be between -π and π for shortest path rotation
+	for rotationDiff > stdmath.Pi {
 		rotationDiff -= 2 * stdmath.Pi
-	} else if rotationDiff < -stdmath.Pi {
+	}
+	for rotationDiff < -stdmath.Pi {
+		rotationDiff += 2 * stdmath.Pi
+	}
+
+	// For small differences (less than π/4), use the shortest path
+	// For larger differences, prefer clockwise rotation (positive difference)
+	if rotationDiff < 0 && stdmath.Abs(rotationDiff) > stdmath.Pi/4 {
 		rotationDiff += 2 * stdmath.Pi
 	}
 	speedRatio := p.playerVelocity / maxAcceleration
@@ -176,9 +192,22 @@ func (p *Player) Update() error {
 	factor = stdmath.Max(rotationSmoothingMin, stdmath.Min(rotationSmoothingMax, factor))
 	p.rotation += rotationDiff * factor
 
+	// Normalize rotation to keep it within 0 to 2π
+	for p.rotation >= 2*stdmath.Pi {
+		p.rotation -= 2 * stdmath.Pi
+	}
+
 	// Smooth velocity towards the target velocity
 	velocityDiff := p.targetVelocity - p.playerVelocity
-	p.playerVelocity += velocityDiff * velocitySmoothingFactor
+
+	// Apply stronger smoothing when changing direction drastically
+	// This helps the player respond more quickly to sharp direction changes
+	if p.isMoving && stdmath.Abs(rotationDiff) > stdmath.Pi/2 {
+		// When turning more than 90 degrees, apply stronger smoothing
+		p.playerVelocity += velocityDiff * (velocitySmoothingFactor * 1.5)
+	} else {
+		p.playerVelocity += velocityDiff * velocitySmoothingFactor
+	}
 
 	if p.playerVelocity > maxAcceleration {
 		p.playerVelocity = maxAcceleration
