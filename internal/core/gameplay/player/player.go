@@ -13,12 +13,12 @@ import (
 // Constants for player movement
 const (
 	rotationPerSecond = -4.5 // Rotation speed in radians per second
-	maxAcceleration   = 15.0 // Maximum acceleration value
+	maxAcceleration   = 40.0 // Maximum acceleration value (significantly increased for much faster movement)
 
 	// Constants for smooth movement
-	rotationSmoothingMin    = 0.05                   // smoothing factor at full speed
+	rotationSmoothingMin    = 0.06                   // smoothing factor at full speed (closer to original for better performance)
 	rotationSmoothingMax    = 0.4                    // smoothing factor when standing still
-	velocitySmoothingFactor = 0.15                   // faster velocity changes
+	velocitySmoothingFactor = 0.25                   // faster velocity changes (significantly increased for much more responsive acceleration)
 	minSwipeDuration        = 200 * time.Millisecond // Minimum duration for a swipe to be considered valid
 )
 
@@ -147,11 +147,27 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 
 	p.targetRotation = newRotation
 
-	// Map swipe distance to target velocity. Allow for more abrupt velocity changes
-	// when turning sharply to improve responsiveness.
-	newVel := stdmath.Min(swipeInfo.Distance/15.0, maxAcceleration)
-	if p.isMoving && newVel < p.playerVelocity*0.9 {
-		newVel = p.playerVelocity * 0.9
+	// Map swipe distance to target velocity with a simplified dynamic scaling
+	// that maintains the improved behavior for larger circles but with better performance
+	var newVel float64
+	if swipeInfo.Distance <= 225.0 {
+		// Enhanced scaling for smaller circles (divisor further reduced from 10.0 to 8.0 for even faster movement)
+		newVel = swipeInfo.Distance / 8.0
+	} else {
+		// Enhanced scaling for larger circles: base velocity + more significant linear scaling
+		baseVel := 225.0 / 8.0 // Base velocity significantly increased by reducing divisor
+		additionalDistance := swipeInfo.Distance - 225.0
+		// Increased factor for additional distance to improve forward speed
+		additionalVel := additionalDistance * 0.20 // 20% of additional distance (up from 15%)
+		newVel = baseVel + additionalVel
+	}
+
+	// Cap at maximum acceleration
+	newVel = stdmath.Min(newVel, maxAcceleration)
+
+	// Maintain momentum when already moving (increased from 90% to 95% for better speed preservation)
+	if p.isMoving && newVel < p.playerVelocity*0.95 {
+		newVel = p.playerVelocity * 0.95
 	}
 	p.targetVelocity = newVel
 	p.isMoving = true
@@ -182,11 +198,13 @@ func (p *Player) Update() error {
 		rotationDiff += 2 * stdmath.Pi
 	}
 
-	// For small differences (less than π/4), use the shortest path
-	// For larger differences, prefer clockwise rotation (positive difference)
-	if rotationDiff < 0 && stdmath.Abs(rotationDiff) > stdmath.Pi/4 {
-		rotationDiff += 2 * stdmath.Pi
+	// Simple adjustment for left turns to address perceptual bias
+	// Apply a very small fixed adjustment to all left turns for better performance
+	if rotationDiff < 0 {
+		rotationDiff *= 1.03 // Minimal 3% adjustment for left turns
 	}
+
+	// Always use the shortest path for rotation
 	speedRatio := p.playerVelocity / maxAcceleration
 	factor := rotationSmoothingMax - (rotationSmoothingMax-rotationSmoothingMin)*speedRatio
 	factor = stdmath.Max(rotationSmoothingMin, stdmath.Min(rotationSmoothingMax, factor))
@@ -221,8 +239,8 @@ func (p *Player) Update() error {
 		p.position.X += dx
 		p.position.Y += dy
 	} else if !p.isMoving {
-		// apply friction when no input
-		p.playerVelocity *= 0.9
+		// apply reduced friction when no input (reduced from 0.9 to 0.95 for longer momentum preservation)
+		p.playerVelocity *= 0.95
 		if p.playerVelocity < 0.01 {
 			p.playerVelocity = 0
 		}
