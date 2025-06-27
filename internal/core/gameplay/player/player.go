@@ -13,7 +13,7 @@ import (
 // Constants for player movement
 const (
 	rotationPerSecond = -4.5 // Rotation speed in radians per second
-	maxAcceleration   = 40.0 // Maximum acceleration value (significantly increased for much faster movement)
+	maxAcceleration   = 50.0 // Maximum acceleration value (significantly increased for much faster movement)
 
 	// Constants for smooth movement
 	rotationSmoothingMin    = 0.06                   // smoothing factor at full speed (closer to original for better performance)
@@ -151,14 +151,14 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 	// that maintains the improved behavior for larger circles but with better performance
 	var newVel float64
 	if swipeInfo.Distance <= 225.0 {
-		// Enhanced scaling for smaller circles (divisor further reduced from 10.0 to 8.0 for even faster movement)
-		newVel = swipeInfo.Distance / 8.0
+		// Enhanced scaling for smaller circles (divisor reduced to 6.4 for 25% more velocity)
+		newVel = swipeInfo.Distance / 6.4
 	} else {
 		// Enhanced scaling for larger circles: base velocity + more significant linear scaling
-		baseVel := 225.0 / 8.0 // Base velocity significantly increased by reducing divisor
+		baseVel := 225.0 / 6.4 // Base velocity increased by 25% by reducing divisor from 8.0 to 6.4
 		additionalDistance := swipeInfo.Distance - 225.0
 		// Increased factor for additional distance to improve forward speed
-		additionalVel := additionalDistance * 0.20 // 20% of additional distance (up from 15%)
+		additionalVel := additionalDistance * 0.25 // 25% of additional distance (increased by 25% from 20%)
 		newVel = baseVel + additionalVel
 	}
 
