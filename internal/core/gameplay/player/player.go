@@ -3,6 +3,7 @@ package player
 import (
 	"discoveryx/internal/assets"
 	"discoveryx/internal/core/ecs"
+	"discoveryx/internal/core/physics"
 	"discoveryx/internal/input"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -245,6 +246,9 @@ func (p *Player) Update() error {
 			p.playerVelocity = 0
 		}
 	}
+
+	// Apply gravity to the player's position, but only when velocity is low
+	p.position = physics.ApplyGravity(p.position, p.playerVelocity)
 
 	return nil
 }
