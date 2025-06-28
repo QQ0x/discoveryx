@@ -1,12 +1,16 @@
 package input
 
 import (
+	"discoveryx/internal/constants"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"log"
 	"math"
 	"time"
 )
+
+// Set to true to enable debug logging
+const debugLogging = false
 
 // Direction represents a swipe direction
 type Direction int
@@ -80,8 +84,8 @@ func NewTouchHandler() TouchHandler {
 		detectedSwipes:     make(map[Direction]bool),
 		holdingDirection:   make(map[Direction]bool),
 		lastDirection:      make(map[ebiten.TouchID]Direction),
-		swipeThreshold:     30.0,                   // Minimum distance for swipe detection
-		swipeDuration:      200 * time.Millisecond, // Maximum duration for swipe detection
+		swipeThreshold:     constants.SwipeThreshold, // Minimum distance for swipe detection
+		swipeDuration:      constants.SwipeDuration,  // Maximum duration for swipe detection
 		currentSwipeAngle:  0,
 		isHolding:          false,
 		swipeDistance:      0,
@@ -123,7 +127,6 @@ func (h *DefaultTouchHandler) GetSwipeInfo() SwipeInfo {
 func (h *DefaultTouchHandler) SetScreenDimensions(width, height int) {
 	h.screenWidth = width
 	h.screenHeight = height
-	log.Printf("Touch handler screen dimensions set to: %dx%d", width, height)
 }
 
 // Update updates the touch handler state
@@ -148,8 +151,8 @@ func (h *DefaultTouchHandler) Update() {
 		h.touchStartTime[id] = time.Now()
 		h.lastDirection[id] = DirectionNone
 
-		// Log touch events for right half of screen
-		if x >= halfWidth {
+		// Log touch events for right half of screen (if debug logging is enabled)
+		if debugLogging && x >= halfWidth {
 			log.Printf("Touch event detected on right half: ID=%d, Position=(%d, %d)", id, x, y)
 		}
 	}
@@ -189,8 +192,10 @@ func (h *DefaultTouchHandler) Update() {
 
 		// Skip processing for touches on the right half
 		if h.initialTouchPos[id].x >= float64(halfWidth) {
-			// Just log the movement for right half
-			log.Printf("Touch movement on right half: ID=%d, Position=(%d, %d)", id, x, y)
+			// Just log the movement for right half (if debug logging is enabled)
+			if debugLogging {
+				log.Printf("Touch movement on right half: ID=%d, Position=(%d, %d)", id, x, y)
+			}
 			continue
 		}
 
@@ -217,35 +222,29 @@ func (h *DefaultTouchHandler) Update() {
 		// Store the previous swipe info for comparison
 		prevSwipeInfo := h.GetSwipeInfo()
 
-		// Detect swipe
+		// Detect swipe - only process if distance exceeds threshold
 		if distance >= h.swipeThreshold {
-			// Store the active touch ID
+			// Update swipe state in one block to reduce redundant operations
 			h.activeTouchID = id
-
-			// Store the swipe distance
 			h.swipeDistance = distance
-
-			// Store the swipe angle
 			h.currentSwipeAngle = angle
-
-			// Store the swipe speed
 			h.currentSwipeSpeed = speed
-
-			// Set the holding flag
 			h.isHolding = true
 
-			// Determine cardinal direction for backward compatibility
-			var direction Direction
+			// Simplified direction calculation
 			// Convert angle to degrees and normalize to 0-360
 			degrees := math.Mod(angle*180/math.Pi+360, 360)
 
-			if degrees >= 315 || degrees < 45 {
+			// Determine cardinal direction using simplified calculation
+			var direction Direction
+			switch {
+			case degrees >= 315 || degrees < 45:
 				direction = DirectionRight
-			} else if degrees >= 45 && degrees < 135 {
+			case degrees >= 45 && degrees < 135:
 				direction = DirectionDown
-			} else if degrees >= 135 && degrees < 225 {
+			case degrees >= 135 && degrees < 225:
 				direction = DirectionLeft
-			} else { // degrees >= 225 && degrees < 315
+			default: // degrees >= 225 && degrees < 315
 				direction = DirectionUp
 			}
 
@@ -253,44 +252,51 @@ func (h *DefaultTouchHandler) Update() {
 			if elapsed <= h.swipeDuration {
 				// This is a new swipe
 				h.detectedSwipes[direction] = true
-				log.Printf("Swipe detected: %v", direction)
+				if debugLogging {
+					log.Printf("Swipe detected: %v", direction)
+				}
 			}
 
 			// Set holding state for backward compatibility
 			h.holdingDirection[direction] = true
-			log.Printf("Holding direction: %v (angle=%f)", direction, angle)
+			if debugLogging {
+				log.Printf("Holding direction: %v (angle=%f)", direction, angle)
+			}
 
-			// Check if the swipe direction has changed
+			// Only update reference point if there was a previous swipe and it has changed significantly
 			if prevSwipeInfo.Angle != 0 {
-				// Calculate the angle difference
-				angleDiff := math.Abs(angle - prevSwipeInfo.Angle)
+				// Simplified check for significant changes - avoid unnecessary calculations
+				// Only calculate angle difference if distance isn't already large enough
+				needsUpdate := distance > 60
 
-				// Update reference point to maintain connection between finger movement and in-game response,
-				// but with optimized thresholds to improve performance:
-				// 1. Significant direction change (> 0.2 radians)
-				// 2. Substantial movement (> 60 pixels) regardless of angle change
-				if angleDiff > 0.2 || distance > 60 {
-					log.Printf("Swipe direction changed: %f -> %f (diff: %f, distance: %f)",
-						prevSwipeInfo.Angle, angle, angleDiff, distance)
+				if !needsUpdate {
+					// Only calculate angle difference if we need to
+					angleDiff := math.Abs(angle - prevSwipeInfo.Angle)
+					needsUpdate = angleDiff > 0.2
+				}
+
+				// Update reference point if needed
+				if needsUpdate {
+					if debugLogging {
+						log.Printf("Swipe direction changed: %f -> %f (distance: %f)",
+							prevSwipeInfo.Angle, angle, distance)
+					}
 
 					// Update the lastSignificantPos to the current position
 					h.lastSignificantPos[id] = h.currentTouchPos[id]
-					log.Printf("Updated lastSignificantPos: (%f, %f)",
-						h.currentTouchPos[id].x, h.currentTouchPos[id].y)
 				}
 			}
 
 			// Update the last direction
 			h.lastDirection[id] = direction
 
-			// Check if the swipe is continuing in the same direction (increasing distance)
-			if prevSwipeInfo.Distance > 0 && distance > prevSwipeInfo.Distance {
-				log.Printf("Swipe continuing: distance increased from %f to %f", prevSwipeInfo.Distance, distance)
-			}
-
-			// Check if the swipe is returning toward the starting point (decreasing distance)
-			if prevSwipeInfo.Distance > 0 && distance < prevSwipeInfo.Distance {
-				log.Printf("Swipe returning: distance decreased from %f to %f", prevSwipeInfo.Distance, distance)
+			// Simplified logging for swipe continuation/return
+			if debugLogging && prevSwipeInfo.Distance > 0 {
+				if distance > prevSwipeInfo.Distance {
+					log.Printf("Swipe continuing: distance increased from %f to %f", prevSwipeInfo.Distance, distance)
+				} else if distance < prevSwipeInfo.Distance {
+					log.Printf("Swipe returning: distance decreased from %f to %f", prevSwipeInfo.Distance, distance)
+				}
 			}
 		}
 	}

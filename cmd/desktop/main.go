@@ -4,12 +4,13 @@
 package main
 
 import (
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/game"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func main() {
-	ebiten.SetWindowSize(640, 480)
+	ebiten.SetWindowSize(constants.ScreenWidth, constants.ScreenHeight)
 	ebiten.SetWindowTitle("DiscoveryX")
 
 	if err := ebiten.RunGame(game.New()); err != nil {

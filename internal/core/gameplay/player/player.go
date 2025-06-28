@@ -2,6 +2,7 @@ package player
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/ecs"
 	"discoveryx/internal/core/physics"
 	"discoveryx/internal/input"
@@ -11,17 +12,7 @@ import (
 	"time"
 )
 
-// Constants for player movement
-const (
-	rotationPerSecond = -4.5 // Rotation speed in radians per second
-	maxAcceleration   = 50.0 // Maximum acceleration value (significantly increased for much faster movement)
-
-	// Constants for smooth movement
-	rotationSmoothingMin    = 0.06                   // smoothing factor at full speed (closer to original for better performance)
-	rotationSmoothingMax    = 0.4                    // smoothing factor when standing still
-	velocitySmoothingFactor = 0.25                   // faster velocity changes (significantly increased for much more responsive acceleration)
-	minSwipeDuration        = 200 * time.Millisecond // Minimum duration for a swipe to be considered valid
-)
+// Player movement constants are now defined in the constants package
 
 // Player represents the player entity
 type Player struct {
@@ -86,7 +77,7 @@ func (p *Player) Draw(screen *ebiten.Image) {
 
 // HandleRotation updates the player's rotation based on input
 func (p *Player) HandleRotation(keyboard input.KeyboardHandler) {
-	speed := stdmath.Abs(rotationPerSecond) / float64(ebiten.TPS())
+	speed := stdmath.Abs(constants.RotationPerSecond) / float64(ebiten.TPS())
 
 	if keyboard.IsKeyPressed(input.KeyLeft) {
 		// For left key, we still want to rotate clockwise, so we add to rotation
@@ -107,7 +98,7 @@ func (p *Player) HandleRotation(keyboard input.KeyboardHandler) {
 // HandleAcceleration handles player acceleration and updates position
 func (p *Player) HandleAcceleration(keyboard input.KeyboardHandler) {
 	if keyboard.IsKeyPressed(input.KeyUp) {
-		if p.curAcceleration < maxAcceleration {
+		if p.curAcceleration < constants.MaxAcceleration {
 			p.curAcceleration = p.playerVelocity + 4
 		}
 
@@ -164,7 +155,7 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 	}
 
 	// Cap at maximum acceleration
-	newVel = stdmath.Min(newVel, maxAcceleration)
+	newVel = stdmath.Min(newVel, constants.MaxAcceleration)
 
 	// Maintain momentum when already moving (increased from 90% to 95% for better speed preservation)
 	if p.isMoving && newVel < p.playerVelocity*0.95 {
@@ -175,9 +166,9 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 }
 
 // Update updates the player state
-func (p *Player) Update() error {
-	keyboard := input.GetKeyboard()
-	touch := input.GetTouch()
+func (p *Player) Update(inputManager *input.Manager) error {
+	keyboard := inputManager.Keyboard()
+	touch := inputManager.Touch()
 
 	// keyboard input for desktop testing
 	p.HandleRotation(keyboard)
@@ -206,9 +197,9 @@ func (p *Player) Update() error {
 	}
 
 	// Always use the shortest path for rotation
-	speedRatio := p.playerVelocity / maxAcceleration
-	factor := rotationSmoothingMax - (rotationSmoothingMax-rotationSmoothingMin)*speedRatio
-	factor = stdmath.Max(rotationSmoothingMin, stdmath.Min(rotationSmoothingMax, factor))
+	speedRatio := p.playerVelocity / constants.MaxAcceleration
+	factor := constants.RotationSmoothingMax - (constants.RotationSmoothingMax-constants.RotationSmoothingMin)*speedRatio
+	factor = stdmath.Max(constants.RotationSmoothingMin, stdmath.Min(constants.RotationSmoothingMax, factor))
 	p.rotation += rotationDiff * factor
 
 	// Normalize rotation to keep it within 0 to 2π
@@ -223,13 +214,13 @@ func (p *Player) Update() error {
 	// This helps the player respond more quickly to sharp direction changes
 	if p.isMoving && stdmath.Abs(rotationDiff) > stdmath.Pi/2 {
 		// When turning more than 90 degrees, apply stronger smoothing
-		p.playerVelocity += velocityDiff * (velocitySmoothingFactor * 1.5)
+		p.playerVelocity += velocityDiff * (constants.VelocitySmoothingFactor * 1.5)
 	} else {
-		p.playerVelocity += velocityDiff * velocitySmoothingFactor
+		p.playerVelocity += velocityDiff * constants.VelocitySmoothingFactor
 	}
 
-	if p.playerVelocity > maxAcceleration {
-		p.playerVelocity = maxAcceleration
+	if p.playerVelocity > constants.MaxAcceleration {
+		p.playerVelocity = constants.MaxAcceleration
 	} else if p.playerVelocity < 0 {
 		p.playerVelocity = 0
 	}
