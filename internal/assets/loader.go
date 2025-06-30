@@ -12,6 +12,8 @@ var assets embed.FS
 
 var (
 	PlayerSprite = mustLoadImage("images/Ships/spaceShips_001.png")
+	StartBackground = mustLoadImage("images/Startpage/startpage_background.png")
+	PlayButton = mustLoadImage("images/Startpage/play_button.png")
 )
 
 // mustLoadImage loads an image from the embedded filesystem

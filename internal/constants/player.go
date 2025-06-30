@@ -8,7 +8,7 @@ const (
 	// RotationPerSecond is the rotation speed in radians per second
 	RotationPerSecond = -4.5
 	// MaxAcceleration is the maximum acceleration value
-	MaxAcceleration = 50.0
+	MaxAcceleration = 15.0
 
 	// RotationSmoothingMin is the smoothing factor at full speed
 	RotationSmoothingMin = 0.06

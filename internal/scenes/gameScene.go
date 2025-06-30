@@ -19,12 +19,12 @@ func NewGameScene(player *player.Player) *GameScene {
 // Update handles the game logic for the game scene.
 // It satisfies the Scene interface.
 func (s *GameScene) Update(state *State) error {
-	return s.player.Update(state.Input)
+	return s.player.Update(state.Input, state.DeltaTime)
 }
 
 // Draw renders the game scene to the screen.
 // It satisfies the Scene interface.
-func (s *GameScene) Draw(screen *ebiten.Image) {
+func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 	// Clear screen with a dark color
 	screen.Fill(color.RGBA{20, 20, 20, 255})
 

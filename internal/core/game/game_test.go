@@ -17,8 +17,8 @@ func TestNewGame(t *testing.T) {
 	}
 
 	// Check that the game dimensions are set correctly
-	if g.width <= 0 || g.height <= 0 {
-		t.Errorf("Game dimensions not set correctly: width=%d, height=%d", g.width, g.height)
+	if g.GetWidth() <= 0 || g.GetHeight() <= 0 {
+		t.Errorf("Game dimensions not set correctly: width=%d, height=%d", g.GetWidth(), g.GetHeight())
 	}
 
 	// Check that the scene manager is initialized

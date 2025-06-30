@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Set to true to enable debug logging
-const debugLogging = false
 
 // Direction represents a swipe direction
 type Direction int
@@ -152,7 +150,7 @@ func (h *DefaultTouchHandler) Update() {
 		h.lastDirection[id] = DirectionNone
 
 		// Log touch events for right half of screen (if debug logging is enabled)
-		if debugLogging && x >= halfWidth {
+  if constants.DebugLogging && x >= halfWidth {
 			log.Printf("Touch event detected on right half: ID=%d, Position=(%d, %d)", id, x, y)
 		}
 	}
@@ -193,7 +191,7 @@ func (h *DefaultTouchHandler) Update() {
 		// Skip processing for touches on the right half
 		if h.initialTouchPos[id].x >= float64(halfWidth) {
 			// Just log the movement for right half (if debug logging is enabled)
-			if debugLogging {
+			if constants.DebugLogging {
 				log.Printf("Touch movement on right half: ID=%d, Position=(%d, %d)", id, x, y)
 			}
 			continue
@@ -252,14 +250,14 @@ func (h *DefaultTouchHandler) Update() {
 			if elapsed <= h.swipeDuration {
 				// This is a new swipe
 				h.detectedSwipes[direction] = true
-				if debugLogging {
+				if constants.DebugLogging {
 					log.Printf("Swipe detected: %v", direction)
 				}
 			}
 
 			// Set holding state for backward compatibility
 			h.holdingDirection[direction] = true
-			if debugLogging {
+			if constants.DebugLogging {
 				log.Printf("Holding direction: %v (angle=%f)", direction, angle)
 			}
 
@@ -277,7 +275,7 @@ func (h *DefaultTouchHandler) Update() {
 
 				// Update reference point if needed
 				if needsUpdate {
-					if debugLogging {
+					if constants.DebugLogging {
 						log.Printf("Swipe direction changed: %f -> %f (distance: %f)",
 							prevSwipeInfo.Angle, angle, distance)
 					}
@@ -291,7 +289,7 @@ func (h *DefaultTouchHandler) Update() {
 			h.lastDirection[id] = direction
 
 			// Simplified logging for swipe continuation/return
-			if debugLogging && prevSwipeInfo.Distance > 0 {
+			if constants.DebugLogging && prevSwipeInfo.Distance > 0 {
 				if distance > prevSwipeInfo.Distance {
 					log.Printf("Swipe continuing: distance increased from %f to %f", prevSwipeInfo.Distance, distance)
 				} else if distance < prevSwipeInfo.Distance {

@@ -1,20 +1,22 @@
 package input
 
-import "log"
+import (
+	"discoveryx/internal/screen"
+)
 
 // Manager provides centralized access to all input handlers
 type Manager struct {
 	keyboard KeyboardHandler
 	touch    TouchHandler
-	width    int
-	height   int
+	screenManager *screen.Manager
 }
 
 // NewManager creates a new input manager with default handlers
 func NewManager() *Manager {
 	return &Manager{
-		keyboard: NewKeyboardHandler(),
-		touch:    NewTouchHandler(),
+		keyboard:      NewKeyboardHandler(),
+		touch:         NewTouchHandler(),
+		screenManager: screen.New(),
 	}
 }
 
@@ -40,10 +42,13 @@ func (m *Manager) SetTouchHandler(handler TouchHandler) {
 
 // SetScreenDimensions sets the screen dimensions
 func (m *Manager) SetScreenDimensions(width, height int) {
-	m.width = width
-	m.height = height
-	m.touch.SetScreenDimensions(width, height)
-	log.Printf("Input manager screen dimensions set to: %dx%d", width, height)
+	// Update screen manager dimensions
+	if m.screenManager.SetDimensions(width, height) {
+		// If dimensions changed, update touch handler
+		m.touch.SetScreenDimensions(width, height)
+
+		// Logging is handled by the screen manager
+	}
 }
 
 // Update updates all input handlers

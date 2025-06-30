@@ -2,6 +2,7 @@ package scenes
 
 import (
 	"discoveryx/internal/input"
+	"discoveryx/internal/screen"
 	"github.com/hajimehoshi/ebiten/v2"
 	"image/color"
 	"testing"
@@ -56,11 +57,27 @@ func TestSceneManagerInitialization(t *testing.T) {
 	if sm.transitionCount != 0 {
 		t.Errorf("Initial transition count is not 0: %d", sm.transitionCount)
 	}
+
+	// Check that the screenManager is nil initially
+	if sm.screenManager != nil {
+		t.Errorf("Initial screenManager is not nil: %v", sm.screenManager)
+	}
+
+	// Initialize the screen manager
+	screenMgr := screen.New()
+	sm.SetScreenManager(screenMgr)
+
+	// Check that the screenManager is set correctly
+	if sm.screenManager != screenMgr {
+		t.Errorf("screenManager not set correctly: expected %v, got %v", screenMgr, sm.screenManager)
+	}
 }
 
 // TestGoToScene tests that the GoToScene method works correctly
 func TestGoToScene(t *testing.T) {
 	sm := &SceneManager{}
+	// Initialize the screen manager
+	sm.SetScreenManager(screen.New())
 	scene1 := NewMockScene("Scene1")
 	scene2 := NewMockScene("Scene2")
 
@@ -99,6 +116,8 @@ func TestGoToScene(t *testing.T) {
 // TestSceneTransition tests that scene transitions work correctly
 func TestSceneTransition(t *testing.T) {
 	sm := &SceneManager{}
+	// Initialize the screen manager
+	sm.SetScreenManager(screen.New())
 	scene1 := NewMockScene("Scene1")
 	scene2 := NewMockScene("Scene2")
 
@@ -113,7 +132,9 @@ func TestSceneTransition(t *testing.T) {
 
 	// Update the scene manager until the transition is complete
 	for i := 0; i < transitionMaxCount; i++ {
-		err := sm.Update(inputManager)
+		// Use a fixed delta time for testing
+		deltaTime := 1.0 / 60.0
+		err := sm.Update(inputManager, deltaTime)
 		if err != nil {
 			t.Fatalf("Update returned an error: %v", err)
 		}
@@ -132,5 +153,41 @@ func TestSceneTransition(t *testing.T) {
 	// Check that the transition count is 0
 	if sm.transitionCount != 0 {
 		t.Errorf("Transition count not reset after transition: %d", sm.transitionCount)
+	}
+}
+
+// TestFinalCleanup tests that the FinalCleanup method properly disposes of transition images
+func TestFinalCleanup(t *testing.T) {
+	sm := &SceneManager{}
+	// Initialize the screen manager
+	sm.SetScreenManager(screen.New())
+	scene1 := NewMockScene("Scene1")
+	scene2 := NewMockScene("Scene2")
+
+	// Set up a transition to create transition images
+	sm.GoToScene(scene1)
+	sm.GoToScene(scene2)
+
+	// Create a dummy image to draw to, which will trigger image creation
+	dummyImage := ebiten.NewImage(640, 480)
+	sm.Draw(dummyImage)
+
+	// Verify that transition images were created
+	if sm.transitionFrom == nil {
+		t.Error("transitionFrom image was not created")
+	}
+	if sm.transitionTo == nil {
+		t.Error("transitionTo image was not created")
+	}
+
+	// Call FinalCleanup
+	sm.FinalCleanup()
+
+	// Verify that transition images were disposed
+	if sm.transitionFrom != nil {
+		t.Error("transitionFrom image was not disposed")
+	}
+	if sm.transitionTo != nil {
+		t.Error("transitionTo image was not disposed")
 	}
 }

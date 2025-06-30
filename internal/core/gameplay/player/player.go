@@ -75,48 +75,6 @@ func (p *Player) Draw(screen *ebiten.Image) {
 	screen.DrawImage(p.sprite, op)
 }
 
-// HandleRotation updates the player's rotation based on input
-func (p *Player) HandleRotation(keyboard input.KeyboardHandler) {
-	speed := stdmath.Abs(constants.RotationPerSecond) / float64(ebiten.TPS())
-
-	if keyboard.IsKeyPressed(input.KeyLeft) {
-		// For left key, we still want to rotate clockwise, so we add to rotation
-		p.rotation += speed
-	}
-
-	if keyboard.IsKeyPressed(input.KeyRight) {
-		// For right key, continue to rotate clockwise
-		p.rotation += speed * 2 // Faster rotation for right key to maintain responsiveness
-	}
-
-	// Normalize rotation to keep it within 0 to 2π
-	for p.rotation >= 2*stdmath.Pi {
-		p.rotation -= 2 * stdmath.Pi
-	}
-}
-
-// HandleAcceleration handles player acceleration and updates position
-func (p *Player) HandleAcceleration(keyboard input.KeyboardHandler) {
-	if keyboard.IsKeyPressed(input.KeyUp) {
-		if p.curAcceleration < constants.MaxAcceleration {
-			p.curAcceleration = p.playerVelocity + 4
-		}
-
-		if p.curAcceleration >= 8 {
-			p.curAcceleration = 8
-		}
-
-		p.playerVelocity = p.curAcceleration
-
-		// Move in the direction we are pointing
-		dx := stdmath.Sin(p.rotation) * p.curAcceleration
-		dy := stdmath.Cos(p.rotation) * -p.curAcceleration
-
-		// Move the player on screen
-		p.position.X += dx
-		p.position.Y += dy
-	}
-}
 
 // HandleTouchInput processes touch input for player movement
 func (p *Player) HandleTouchInput(touch input.TouchHandler) {
@@ -165,16 +123,73 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 	p.isMoving = true
 }
 
+// HandleKeyboardInput processes keyboard input for player movement
+func (p *Player) HandleKeyboardInput(keyboard input.KeyboardHandler) {
+	// Check which keys are pressed
+	leftPressed := keyboard.IsKeyPressed(input.KeyLeft)
+	rightPressed := keyboard.IsKeyPressed(input.KeyRight)
+	upPressed := keyboard.IsKeyPressed(input.KeyUp)
+
+	// If no keys are pressed, stop moving
+	if !leftPressed && !rightPressed && !upPressed {
+		p.isMoving = false
+		p.targetVelocity = 0
+		return
+	}
+
+	// Set the player as moving
+	p.isMoving = true
+
+	// Handle rotation
+	if leftPressed {
+		// For left key, rotate clockwise
+		p.targetRotation += constants.RotationPerSecond / 60.0
+	}
+
+	if rightPressed {
+		// For right key, rotate counter-clockwise
+		p.targetRotation -= constants.RotationPerSecond / 60.0
+	}
+
+	// Normalize target rotation
+	for p.targetRotation >= 2*stdmath.Pi {
+		p.targetRotation -= 2 * stdmath.Pi
+	}
+	for p.targetRotation < 0 {
+		p.targetRotation += 2 * stdmath.Pi
+	}
+
+	// Handle acceleration
+	if upPressed {
+		// When moving forward, set target velocity to max
+		p.targetVelocity = constants.MaxAcceleration
+
+		// If also turning, adjust rotation speed based on velocity
+		// This creates the curved movement effect
+		if leftPressed || rightPressed {
+			// No additional adjustment needed here as the rotation is already set above
+			// and the smooth movement system will create the curved effect
+		}
+	} else if leftPressed || rightPressed {
+		// When only rotating (without forward movement), set a small velocity
+		// This allows the player to rotate in place
+		p.targetVelocity = 0.1 // Small non-zero value for rotation in place
+	} else {
+		// No movement keys pressed
+		p.targetVelocity = 0
+	}
+}
+
 // Update updates the player state
-func (p *Player) Update(inputManager *input.Manager) error {
+func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 	keyboard := inputManager.Keyboard()
 	touch := inputManager.Touch()
 
-	// keyboard input for desktop testing
-	p.HandleRotation(keyboard)
-	p.HandleAcceleration(keyboard)
+	// Process keyboard input using the smooth movement system
+	p.HandleKeyboardInput(keyboard)
 
-	if touch != nil {
+	// Only process touch input if it's active and available
+	if touch != nil && touch.IsHolding() {
 		p.HandleTouchInput(touch)
 	}
 
@@ -200,7 +215,8 @@ func (p *Player) Update(inputManager *input.Manager) error {
 	speedRatio := p.playerVelocity / constants.MaxAcceleration
 	factor := constants.RotationSmoothingMax - (constants.RotationSmoothingMax-constants.RotationSmoothingMin)*speedRatio
 	factor = stdmath.Max(constants.RotationSmoothingMin, stdmath.Min(constants.RotationSmoothingMax, factor))
-	p.rotation += rotationDiff * factor
+	// Apply delta time to rotation smoothing
+	p.rotation += rotationDiff * factor * deltaTime * 60.0
 
 	// Normalize rotation to keep it within 0 to 2π
 	for p.rotation >= 2*stdmath.Pi {
@@ -214,9 +230,11 @@ func (p *Player) Update(inputManager *input.Manager) error {
 	// This helps the player respond more quickly to sharp direction changes
 	if p.isMoving && stdmath.Abs(rotationDiff) > stdmath.Pi/2 {
 		// When turning more than 90 degrees, apply stronger smoothing
-		p.playerVelocity += velocityDiff * (constants.VelocitySmoothingFactor * 1.5)
+		// Apply delta time to velocity smoothing
+		p.playerVelocity += velocityDiff * (constants.VelocitySmoothingFactor * 1.5) * deltaTime * 60.0
 	} else {
-		p.playerVelocity += velocityDiff * constants.VelocitySmoothingFactor
+		// Apply delta time to velocity smoothing
+		p.playerVelocity += velocityDiff * constants.VelocitySmoothingFactor * deltaTime * 60.0
 	}
 
 	if p.playerVelocity > constants.MaxAcceleration {
@@ -226,20 +244,22 @@ func (p *Player) Update(inputManager *input.Manager) error {
 	}
 
 	if p.playerVelocity > 0.05 {
-		dx := stdmath.Sin(p.rotation) * p.playerVelocity
-		dy := stdmath.Cos(p.rotation) * -p.playerVelocity
+		// Apply delta time to movement
+		dx := stdmath.Sin(p.rotation) * p.playerVelocity * deltaTime * 60.0
+		dy := stdmath.Cos(p.rotation) * -p.playerVelocity * deltaTime * 60.0
 		p.position.X += dx
 		p.position.Y += dy
 	} else if !p.isMoving {
-		// apply reduced friction when no input (reduced from 0.9 to 0.95 for longer momentum preservation)
-		p.playerVelocity *= 0.95
+		// Apply delta time to friction
+		frictionFactor := stdmath.Pow(0.95, deltaTime*60.0)
+		p.playerVelocity *= frictionFactor
 		if p.playerVelocity < 0.01 {
 			p.playerVelocity = 0
 		}
 	}
 
 	// Apply gravity to the player's position, but only when velocity is low
-	p.position = physics.ApplyGravity(p.position, p.playerVelocity)
+	p.position = physics.ApplyGravity(p.position, p.playerVelocity, deltaTime)
 
 	return nil
 }
