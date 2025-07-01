@@ -43,8 +43,18 @@ func NewPlayer(world ecs.World) *Player {
 	return p
 }
 
+// GetPosition returns the player's position
+func (p *Player) GetPosition() math.Vector {
+	return p.position
+}
+
+// SetPosition sets the player's position
+func (p *Player) SetPosition(position math.Vector) {
+	p.position = position
+}
+
 // Draw draws the player
-func (p *Player) Draw(screen *ebiten.Image) {
+func (p *Player) Draw(screen *ebiten.Image, cameraOffsetX, cameraOffsetY float64) {
 	// Calculate sprite center
 	bounds := p.sprite.Bounds()
 	halfW := float64(bounds.Dx()) / 2
@@ -70,6 +80,9 @@ func (p *Player) Draw(screen *ebiten.Image) {
 
 	// 4. Apply player position offset
 	op.GeoM.Translate(p.position.X, p.position.Y)
+
+	// 5. Apply camera offset
+	op.GeoM.Translate(cameraOffsetX, cameraOffsetY)
 
 	// Draw sprite
 	screen.DrawImage(p.sprite, op)

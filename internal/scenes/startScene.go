@@ -116,8 +116,9 @@ func (s *StartScene) Draw(screen *ebiten.Image, state *State) {
 	bgOp := &ebiten.DrawImageOptions{}
 
 	// Calculate scale to fit screen while maintaining aspect ratio
-	bgWidth := float64(assets.StartBackground.Bounds().Dx())
-	bgHeight := float64(assets.StartBackground.Bounds().Dy())
+	startBg := assets.GetStartBackground()
+	bgWidth := float64(startBg.Bounds().Dx())
+	bgHeight := float64(startBg.Bounds().Dy())
 
 	scaleX := float64(worldWidth) / bgWidth
 	scaleY := float64(worldHeight) / bgHeight
@@ -135,7 +136,7 @@ func (s *StartScene) Draw(screen *ebiten.Image, state *State) {
 	scaledHeight := bgHeight * scale
 	bgOp.GeoM.Translate((float64(worldWidth)-scaledWidth)/2, (float64(worldHeight)-scaledHeight)/2)
 
-	screen.DrawImage(assets.StartBackground, bgOp)
+	screen.DrawImage(assets.GetStartBackground(), bgOp)
 
 	// Draw play button
 	if s.buttonWidth > 0 {
