@@ -73,8 +73,8 @@ func (w *GeneratedWorld) GenerateNewWorld() error {
 	}
 
 	// Spawn objects on walls
-	objectTypes := []string{"Pilz", "Kristall", "Flechte", "Spinnennetz"}
-	w.SpawnObjectsOnWalls(objectTypes, 0.05, 10.0) // 5% chance per wall, minimum distance 10 units
+	// This is now handled by the enemies.SpawnObjectsOnWalls function in the gameScene
+	// The object types, spawn chance, and minimum distance are defined there
 
 	return nil
 }
@@ -237,17 +237,13 @@ func (w *GeneratedWorld) Draw(screen *ebiten.Image, offsetX, offsetY float64) {
 	centerX := float64(w.width) / 2
 	centerY := float64(w.height) / 2
 
-	// Calculate the camera center position in world coordinates
-	cameraCenterX := -offsetX
-	cameraCenterY := -offsetY
-
 	// Draw each loaded chunk
 	for _, chunk := range w.chunks {
 		if chunk.IsLoaded {
 			// Calculate the world coordinates for this chunk
-			// Use camera position instead of player position for smoother movement
-			worldX := centerX + offsetX + float64(chunk.X * ChunkSize * CellSize) - cameraCenterX
-			worldY := centerY + offsetY + float64(chunk.Y * ChunkSize * CellSize) - cameraCenterY
+			// Apply camera offset only once, consistent with player and enemy drawing
+			worldX := centerX + float64(chunk.X * ChunkSize * CellSize) + offsetX
+			worldY := centerY + float64(chunk.Y * ChunkSize * CellSize) + offsetY
 
 			// Draw the chunk - convert final position to int to avoid subpixel rendering issues
 			chunk.Draw(screen, int(worldX), int(worldY), CellSize)

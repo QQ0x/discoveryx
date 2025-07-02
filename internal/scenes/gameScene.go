@@ -3,6 +3,7 @@ package scenes
 import (
 	"discoveryx/internal/assets"
 	"discoveryx/internal/constants"
+	"discoveryx/internal/core/gameplay/enemies"
 	"discoveryx/internal/core/gameplay/player"
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/utils/math"
@@ -13,7 +14,8 @@ import (
 type GameScene struct {
 	player         *player.Player
 	generatedWorld *worldgen.GeneratedWorld
-	cameraPosition math.Vector // Camera position for following the player
+	cameraPosition math.Vector      // Camera position for following the player
+	enemies        []*enemies.Enemy // List of enemies in the scene
 }
 
 func NewGameScene(player *player.Player) *GameScene {
@@ -45,6 +47,10 @@ func (s *GameScene) Initialize(state *State) error {
 		return err
 	}
 
+	// Spawn objects (enemies) on walls
+	objectTypes := []string{"enemy_1"}
+	s.enemies = enemies.SpawnObjectsOnWalls(s.generatedWorld, objectTypes, 1.0, 10.0) // 100% chance per wall, minimum distance 10 units
+
 	return nil
 }
 
@@ -61,6 +67,13 @@ func (s *GameScene) Update(state *State) error {
 	// Update the player
 	if err := s.player.Update(state.Input, state.DeltaTime); err != nil {
 		return err
+	}
+
+	// Update enemies
+	for _, enemy := range s.enemies {
+		if err := enemy.Update(); err != nil {
+			return err
+		}
 	}
 
 	// Get the player's position and update the generated world
@@ -131,8 +144,8 @@ func (s *GameScene) Update(state *State) error {
 		centeringFactor := (constants.CameraVelocityThreshold - playerVelocity) / constants.CameraVelocityThreshold
 
 		// Blend between current target and player position based on centering factor
-		newCameraTargetX = cameraTargetX + (position.X - cameraTargetX) * centeringFactor * constants.CameraCenteringStrength
-		newCameraTargetY = cameraTargetY + (position.Y - cameraTargetY) * centeringFactor * constants.CameraCenteringStrength
+		newCameraTargetX = cameraTargetX + (position.X-cameraTargetX)*centeringFactor*constants.CameraCenteringStrength
+		newCameraTargetY = cameraTargetY + (position.Y-cameraTargetY)*centeringFactor*constants.CameraCenteringStrength
 	}
 
 	// Convert camera target to camera position (which is the negative of the target)
@@ -186,6 +199,12 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 	if s.generatedWorld != nil {
 		// Apply camera offset when drawing the world (using float64 for smoother movement)
 		s.generatedWorld.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y)
+	}
+
+	// Draw the enemies with camera offset
+	for _, enemy := range s.enemies {
+		// Draw the enemy with camera offset and world dimensions
+		enemy.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y, worldWidth, worldHeight)
 	}
 
 	// Draw the player with camera offset

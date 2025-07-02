@@ -4,8 +4,6 @@ import (
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
-	"math/rand"
-	"time"
 )
 
 // WallPoint represents a point on a wall with world coordinates
@@ -128,8 +126,13 @@ func (cell *WorldCell) GetWallsInWorldCoordinates() []WallPoint {
 			worldWall.Y = rotY + snippetCenterY
 
 			// Also rotate normal vector
-			normalX := worldWall.Normal.X*cosA - worldWall.Normal.Y*sinA
-			normalY := worldWall.Normal.X*sinA + worldWall.Normal.Y*cosA
+			// Store original normal vector components
+			origNormalX := worldWall.Normal.X
+			origNormalY := worldWall.Normal.Y
+
+			// Apply rotation matrix to normal vector
+			normalX := origNormalX*cosA - origNormalY*sinA
+			normalY := origNormalX*sinA + origNormalY*cosA
 			worldWall.Normal = math.Vector{X: normalX, Y: normalY}
 		}
 
@@ -141,65 +144,4 @@ func (cell *WorldCell) GetWallsInWorldCoordinates() []WallPoint {
 	}
 
 	return worldWalls
-}
-
-// SpawnObjectsOnWalls spawns objects on walls in the visible world
-func (w *GeneratedWorld) SpawnObjectsOnWalls(objectTypes []string, spawnChance float64, minDistanceBetweenObjects float64) {
-	// Random generator
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	// List of all spawned objects to ensure minimum distance
-	spawnedObjects := []math.Vector{}
-
-	// For each visible chunk
-	for _, chunk := range w.chunks {
-		if !chunk.IsLoaded {
-			continue
-		}
-
-		// For each cell in the chunk
-		for _, cell := range chunk.Cells {
-			// Get wall points in world coordinates
-			wallPoints := cell.GetWallsInWorldCoordinates()
-
-			// For each wall point
-			for _, wall := range wallPoints {
-				// Check if an object should be spawned (random chance)
-				if rng.Float64() <= spawnChance {
-					// Check minimum distance to other spawned objects
-					tooClose := false
-					for _, obj := range spawnedObjects {
-						dx := wall.X - obj.X
-						dy := wall.Y - obj.Y
-						distSq := dx*dx + dy*dy
-
-						if distSq < minDistanceBetweenObjects*minDistanceBetweenObjects {
-							tooClose = true
-							break
-						}
-					}
-
-					if !tooClose {
-						// Choose random object type
-						objectType := objectTypes[rng.Intn(len(objectTypes))]
-
-						// Spawn object at wall position
-						// Offset slightly in direction of normal vector so it sits on the wall
-						spawnX := wall.X + wall.Normal.X*0.1
-						spawnY := wall.Y + wall.Normal.Y*0.1
-
-						// Log what type of object we're spawning (in a real implementation, we would use this)
-						_ = objectType // Using objectType to avoid unused variable warning
-
-						// Here would be the actual object creation
-						// For now, just add to the list of spawned objects
-						spawnedObjects = append(spawnedObjects, math.Vector{X: spawnX, Y: spawnY})
-
-						// TODO: Create actual game object here
-						// This would depend on how objects are created in the game
-					}
-				}
-			}
-		}
-	}
 }
