@@ -37,6 +37,7 @@ type WorldSnippet struct {
 	Connectors []SnippetConnector // The connectors this snippet has
 	Weight     int                // The relative probability weight for selection
 	Image      *ebiten.Image      // The loaded image
+	Walls      []WallPoint        // The wall points detected in this snippet
 }
 
 // GetType returns the type of the snippet based on the number of connectors
@@ -146,6 +147,9 @@ func (r *SnippetRegistry) addSnippet(snippet *WorldSnippet) {
 	for _, conn := range snippet.Connectors {
 		r.ByConnector[conn] = append(r.ByConnector[conn], snippet)
 	}
+
+	// Detect walls in the snippet
+	snippet.Walls = DetectWallsInSnippet(snippet)
 }
 
 // GetSnippetsByConnector returns all snippets that have the specified connector

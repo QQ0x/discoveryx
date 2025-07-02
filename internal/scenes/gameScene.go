@@ -2,6 +2,7 @@ package scenes
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/gameplay/player"
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/utils/math"
@@ -74,33 +75,77 @@ func (s *GameScene) Update(state *State) error {
 	// Update camera position to follow player
 	// Reuse screen dimensions calculated above
 
-	// Calculate how far the player is from the center of the screen (as a ratio)
-	// This will be used to determine how strongly the camera should follow the player
-	distanceFromCenterX := stdmath.Abs(position.X) / (screenWidth / 2)
-	distanceFromCenterY := stdmath.Abs(position.Y) / (screenHeight / 2)
+	// Get player velocity to determine if we should center the camera
+	playerVelocity := s.player.GetVelocity()
 
-	// Apply non-linear scaling to make camera movement stronger near edges
-	// and weaker near center - using a much higher factor (4.0) to ensure player stays on screen
-	followStrengthX := stdmath.Pow(distanceFromCenterX, 2) * 4.0
-	followStrengthY := stdmath.Pow(distanceFromCenterY, 2) * 4.0
+	// Calculate the current camera target (where the camera is looking at)
+	// This is the inverse of the camera position since camera position is an offset
+	cameraTargetX := -s.cameraPosition.X
+	cameraTargetY := -s.cameraPosition.Y
 
-	// If player is getting close to the edge, use full strength to prevent them from leaving the screen
-	// Reduced threshold from 0.9 to 0.8 to start full strength follow earlier
-	if distanceFromCenterX > 0.8 {
-		followStrengthX = 1.0 // Full strength when near edge
+	// Calculate how far the player is from the camera target
+	offsetX := position.X - cameraTargetX
+	offsetY := position.Y - cameraTargetY
+
+	// Calculate the deadzone dimensions
+	deadZoneWidth := screenWidth * constants.CameraDeadZoneX
+	deadZoneHeight := screenHeight * constants.CameraDeadZoneY
+
+	// Calculate new camera target position
+	var newCameraTargetX, newCameraTargetY float64
+
+	// When player is moving at normal speed, use deadzone-based following
+	if playerVelocity >= constants.CameraVelocityThreshold {
+		// Start with current camera target
+		newCameraTargetX = cameraTargetX
+		newCameraTargetY = cameraTargetY
+
+		// X-axis deadzone calculation
+		if stdmath.Abs(offsetX) > deadZoneWidth/2 {
+			// Player is outside deadzone, move camera target toward player
+			// but only by the amount they're outside the deadzone
+			if offsetX > 0 {
+				// Player is to the right of deadzone
+				newCameraTargetX = position.X - deadZoneWidth/2
+			} else {
+				// Player is to the left of deadzone
+				newCameraTargetX = position.X + deadZoneWidth/2
+			}
+		}
+
+		// Y-axis deadzone calculation
+		if stdmath.Abs(offsetY) > deadZoneHeight/2 {
+			// Player is outside deadzone, move camera target toward player
+			// but only by the amount they're outside the deadzone
+			if offsetY > 0 {
+				// Player is below deadzone
+				newCameraTargetY = position.Y - deadZoneHeight/2
+			} else {
+				// Player is above deadzone
+				newCameraTargetY = position.Y + deadZoneHeight/2
+			}
+		}
+	} else {
+		// When player is slow/stopped, gradually center on player
+		// Calculate centering strength based on player velocity
+		centeringFactor := (constants.CameraVelocityThreshold - playerVelocity) / constants.CameraVelocityThreshold
+
+		// Blend between current target and player position based on centering factor
+		newCameraTargetX = cameraTargetX + (position.X - cameraTargetX) * centeringFactor * constants.CameraCenteringStrength
+		newCameraTargetY = cameraTargetY + (position.Y - cameraTargetY) * centeringFactor * constants.CameraCenteringStrength
 	}
-	if distanceFromCenterY > 0.8 {
-		followStrengthY = 1.0 // Full strength when near edge
-	}
 
-	// Calculate target camera position (negative because we're moving the world in the opposite direction)
-	targetCameraX := -position.X * followStrengthX
-	targetCameraY := -position.Y * followStrengthY
+	// Convert camera target to camera position (which is the negative of the target)
+	targetCameraX := -newCameraTargetX
+	targetCameraY := -newCameraTargetY
+
+	// Apply frame-rate independent smoothing
+	// This ensures consistent camera movement regardless of frame rate
+	interpolationFactor := 1.0 - stdmath.Pow(1.0-constants.CameraInterpolationFactor, state.DeltaTime*60.0)
 
 	// Smoothly interpolate current camera position toward target position
-	// Using a much higher interpolation factor (0.5) for very fast camera movement
-	s.cameraPosition.X += (targetCameraX - s.cameraPosition.X) * 0.5
-	s.cameraPosition.Y += (targetCameraY - s.cameraPosition.Y) * 0.5
+	s.cameraPosition.X += (targetCameraX - s.cameraPosition.X) * interpolationFactor
+	s.cameraPosition.Y += (targetCameraY - s.cameraPosition.Y) * interpolationFactor
 
 	return nil
 }
@@ -139,8 +184,8 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 
 	// Draw the generated world if it has been initialized
 	if s.generatedWorld != nil {
-		// Apply camera offset when drawing the world (convert float64 to int)
-		s.generatedWorld.Draw(screen, int(s.cameraPosition.X), int(s.cameraPosition.Y))
+		// Apply camera offset when drawing the world (using float64 for smoother movement)
+		s.generatedWorld.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y)
 	}
 
 	// Draw the player with camera offset

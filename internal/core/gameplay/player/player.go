@@ -48,6 +48,11 @@ func (p *Player) GetPosition() math.Vector {
 	return p.position
 }
 
+// GetVelocity returns the player's current velocity
+func (p *Player) GetVelocity() float64 {
+	return p.playerVelocity
+}
+
 // SetPosition sets the player's position
 func (p *Player) SetPosition(position math.Vector) {
 	p.position = position
@@ -88,7 +93,6 @@ func (p *Player) Draw(screen *ebiten.Image, cameraOffsetX, cameraOffsetY float64
 	screen.DrawImage(p.sprite, op)
 }
 
-
 // HandleTouchInput processes touch input for player movement
 func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 	if !touch.IsHolding() {
@@ -108,29 +112,54 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 		newRotation -= 2 * stdmath.Pi
 	}
 
-	p.targetRotation = newRotation
+	// Calculate the difference between current rotation and new rotation
+	rotationDiff := newRotation - p.rotation
 
-	// Map swipe distance to target velocity with a simplified dynamic scaling
-	// that maintains the improved behavior for larger circles but with better performance
+	// Normalize the difference to be between -π and π for shortest path rotation
+	for rotationDiff > stdmath.Pi {
+		rotationDiff -= 2 * stdmath.Pi
+	}
+	for rotationDiff < -stdmath.Pi {
+		rotationDiff += 2 * stdmath.Pi
+	}
+
+	// For small angle changes, make the adjustment more gradual
+	// This allows for smaller curves during direction changes
+	if stdmath.Abs(rotationDiff) < stdmath.Pi/4 { // Less than 45 degrees
+		// Apply a sensitivity factor for small turns (smaller = more gradual)
+		sensitivityFactor := 0.6 // Adjust this value to control small curve sensitivity
+
+		// Calculate a more gradual target rotation
+		p.targetRotation = p.rotation + rotationDiff * sensitivityFactor
+	} else {
+		// For larger turns, use the original behavior
+		p.targetRotation = newRotation
+	}
+
+	// Map swipe distance to target velocity with a more gradual dynamic scaling
+	// to prevent too fast acceleration with small swipes
 	var newVel float64
-	if swipeInfo.Distance <= 225.0 {
-		// Enhanced scaling for smaller circles (divisor reduced to 6.4 for 25% more velocity)
-		newVel = swipeInfo.Distance / 6.4
+	if swipeInfo.Distance <= 10.0 {
+		// Special case for very small swipes to allow extremely slow movement
+		newVel = swipeInfo.Distance / 25.0
+	} else if swipeInfo.Distance <= 225.0 {
+		// Enhanced scaling for smaller circles (divisor increased to 20.0 for much lower minimum speed)
+		newVel = swipeInfo.Distance / 20.0
 	} else {
 		// Enhanced scaling for larger circles: base velocity + more significant linear scaling
-		baseVel := 225.0 / 6.4 // Base velocity increased by 25% by reducing divisor from 8.0 to 6.4
+		baseVel := 225.0 / 20.0 // Base velocity calculated with the new divisor
 		additionalDistance := swipeInfo.Distance - 225.0
 		// Increased factor for additional distance to improve forward speed
-		additionalVel := additionalDistance * 0.25 // 25% of additional distance (increased by 25% from 20%)
+		additionalVel := additionalDistance * 0.2 // 20% of additional distance (reduced from 30%)
 		newVel = baseVel + additionalVel
 	}
 
 	// Cap at maximum acceleration
 	newVel = stdmath.Min(newVel, constants.MaxAcceleration)
 
-	// Maintain momentum when already moving (increased from 90% to 95% for better speed preservation)
-	if p.isMoving && newVel < p.playerVelocity*0.95 {
-		newVel = p.playerVelocity * 0.95
+	// Maintain momentum when already moving (reduced from 85% to 70% to allow for quicker deceleration with small inputs)
+	if p.isMoving && newVel < p.playerVelocity*0.70 {
+		newVel = p.playerVelocity * 0.70
 	}
 	p.targetVelocity = newVel
 	p.isMoving = true
@@ -226,8 +255,22 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 
 	// Always use the shortest path for rotation
 	speedRatio := p.playerVelocity / constants.MaxAcceleration
-	factor := constants.RotationSmoothingMax - (constants.RotationSmoothingMax-constants.RotationSmoothingMin)*speedRatio
+	// Use a non-linear formula to make turns tighter at lower speeds
+	// Raise the speedRatio to the power of CurvePower to create an adjustable curve
+	// Higher CurvePower values make turns tighter at lower speeds
+	adjustedSpeedRatio := stdmath.Pow(speedRatio, constants.CurvePower)
+	factor := constants.RotationSmoothingMax - (constants.RotationSmoothingMax-constants.RotationSmoothingMin)*adjustedSpeedRatio
 	factor = stdmath.Max(constants.RotationSmoothingMin, stdmath.Min(constants.RotationSmoothingMax, factor))
+
+	// Ensure small rotation differences still have a noticeable effect
+	// by applying a minimum rotation amount for very small inputs
+	minRotationFactor := 0.35 // Increased minimum factor for very small rotation differences
+	// Expanded threshold for small rotation differences to make more subtle curves possible
+	if stdmath.Abs(rotationDiff) < 0.1 && rotationDiff != 0 {
+		// For very small rotation differences, use a higher factor to make them more noticeable
+		factor = stdmath.Max(factor, minRotationFactor)
+	}
+
 	// Apply delta time to rotation smoothing
 	p.rotation += rotationDiff * factor * deltaTime * 60.0
 
@@ -256,8 +299,8 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 		p.playerVelocity = 0
 	}
 
-	if p.playerVelocity > 0.05 {
-		// Apply delta time to movement
+	if p.playerVelocity > 0.02 {
+		// Apply delta time to movement (threshold reduced from 0.05 to 0.02 to allow slower movement)
 		dx := stdmath.Sin(p.rotation) * p.playerVelocity * deltaTime * 60.0
 		dy := stdmath.Cos(p.rotation) * -p.playerVelocity * deltaTime * 60.0
 		p.position.X += dx

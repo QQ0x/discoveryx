@@ -45,6 +45,7 @@ func NewGeneratedWorld(width, height int, generator *WorldGenerator, config *Wor
 	}
 
 	// Set player position to a cell on the main path
+	// This satisfies requirement 8: The player must spawn on the main path
 	if len(world.worldMap.MainPathCells) > 0 {
 		// Choose a cell from the main path
 		mainPathCell := world.worldMap.MainPathCells[len(world.worldMap.MainPathCells)/2] // Use middle of the path for better gameplay
@@ -67,7 +68,15 @@ func NewGeneratedWorld(width, height int, generator *WorldGenerator, config *Wor
 func (w *GeneratedWorld) GenerateNewWorld() error {
 	var err error
 	w.worldMap, err = w.generator.GenerateWorld(w.config)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Spawn objects on walls
+	objectTypes := []string{"Pilz", "Kristall", "Flechte", "Spinnennetz"}
+	w.SpawnObjectsOnWalls(objectTypes, 0.05, 10.0) // 5% chance per wall, minimum distance 10 units
+
+	return nil
 }
 
 // organizeChunks organizes the cells in the world map into chunks
@@ -223,20 +232,25 @@ func (w *GeneratedWorld) GetSnippetAt(worldX, worldY int) *WorldSnippet {
 }
 
 // Draw draws the visible chunks of the world
-func (w *GeneratedWorld) Draw(screen *ebiten.Image, offsetX, offsetY int) {
+func (w *GeneratedWorld) Draw(screen *ebiten.Image, offsetX, offsetY float64) {
 	// Calculate the center of the screen
-	centerX := w.width / 2
-	centerY := w.height / 2
+	centerX := float64(w.width) / 2
+	centerY := float64(w.height) / 2
+
+	// Calculate the camera center position in world coordinates
+	cameraCenterX := -offsetX
+	cameraCenterY := -offsetY
 
 	// Draw each loaded chunk
 	for _, chunk := range w.chunks {
 		if chunk.IsLoaded {
 			// Calculate the world coordinates for this chunk
-			worldX := offsetX + centerX - int(w.playerX) + chunk.X * ChunkSize * CellSize
-			worldY := offsetY + centerY - int(w.playerY) + chunk.Y * ChunkSize * CellSize
+			// Use camera position instead of player position for smoother movement
+			worldX := centerX + offsetX + float64(chunk.X * ChunkSize * CellSize) - cameraCenterX
+			worldY := centerY + offsetY + float64(chunk.Y * ChunkSize * CellSize) - cameraCenterY
 
-			// Draw the chunk
-			chunk.Draw(screen, worldX, worldY, CellSize)
+			// Draw the chunk - convert final position to int to avoid subpixel rendering issues
+			chunk.Draw(screen, int(worldX), int(worldY), CellSize)
 		}
 	}
 }
