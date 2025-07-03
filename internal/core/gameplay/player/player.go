@@ -53,6 +53,11 @@ func (p *Player) GetVelocity() float64 {
 	return p.playerVelocity
 }
 
+// GetRotation returns the player's rotation in radians
+func (p *Player) GetRotation() float64 {
+	return p.rotation
+}
+
 // SetPosition sets the player's position
 func (p *Player) SetPosition(position math.Vector) {
 	p.position = position
@@ -130,7 +135,7 @@ func (p *Player) HandleTouchInput(touch input.TouchHandler) {
 		sensitivityFactor := 0.6 // Adjust this value to control small curve sensitivity
 
 		// Calculate a more gradual target rotation
-		p.targetRotation = p.rotation + rotationDiff * sensitivityFactor
+		p.targetRotation = p.rotation + rotationDiff*sensitivityFactor
 	} else {
 		// For larger turns, use the original behavior
 		p.targetRotation = newRotation

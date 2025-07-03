@@ -5,25 +5,31 @@ import (
 	"discoveryx/internal/constants"
 	"discoveryx/internal/core/gameplay/enemies"
 	"discoveryx/internal/core/gameplay/player"
+	"discoveryx/internal/core/gameplay/projectiles"
 	"discoveryx/internal/core/worldgen"
+	"discoveryx/internal/input"
 	"discoveryx/internal/rendering/shaders"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	stdmath "math"
 )
 
 type GameScene struct {
-	player          *player.Player
-	generatedWorld  *worldgen.GeneratedWorld
-	cameraPosition  math.Vector      // Camera position for following the player
-	enemies         []*enemies.Enemy // List of enemies in the scene
-	brightnessShader *shaders.BrightnessShader // Shader for brightness effect
+	player            *player.Player
+	generatedWorld    *worldgen.GeneratedWorld
+	cameraPosition    math.Vector               // Camera position for following the player
+	enemies           []*enemies.Enemy          // List of enemies in the scene
+	brightnessShader  *shaders.BrightnessShader // Shader for brightness effect
+	bullets           []*projectiles.Bullet
+	timeSinceLastShot float64
 }
 
 func NewGameScene(player *player.Player) *GameScene {
 	return &GameScene{
-		player:         player,
-		cameraPosition: math.Vector{X: 0, Y: 0},
+		player:            player,
+		cameraPosition:    math.Vector{X: 0, Y: 0},
+		timeSinceLastShot: 0,
 	}
 }
 
@@ -89,6 +95,16 @@ func (s *GameScene) Update(state *State) error {
 			return err
 		}
 	}
+
+	// Handle shooting input and update bullets
+	s.handleShooting(state)
+	var activeBullets []*projectiles.Bullet
+	for _, b := range s.bullets {
+		if !b.Update(state.DeltaTime) {
+			activeBullets = append(activeBullets, b)
+		}
+	}
+	s.bullets = activeBullets
 
 	// Get the player's position and update the generated world
 	position := s.player.GetPosition()
@@ -224,6 +240,11 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 		enemy.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y, worldWidth, worldHeight)
 	}
 
+	// Draw bullets with camera offset
+	for _, b := range s.bullets {
+		b.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y, worldWidth, worldHeight)
+	}
+
 	// Draw the player with camera offset
 	s.player.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y)
 
@@ -248,4 +269,31 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 		// If shader not initialized, just draw the temp screen directly
 		screen.DrawImage(tempScreen, nil)
 	}
+}
+
+const fireInterval = 0.25
+
+// handleShooting spawns bullets when the space key is pressed.
+func (s *GameScene) handleShooting(state *State) {
+	if inpututil.IsKeyJustPressed(input.KeySpace) {
+		s.spawnBullet()
+		s.timeSinceLastShot = 0
+		return
+	}
+
+	if state.Input.Keyboard().IsKeyPressed(input.KeySpace) {
+		s.timeSinceLastShot += state.DeltaTime
+		if s.timeSinceLastShot >= fireInterval {
+			s.spawnBullet()
+			s.timeSinceLastShot = 0
+		}
+	} else {
+		s.timeSinceLastShot = fireInterval
+	}
+}
+
+func (s *GameScene) spawnBullet() {
+	pos := s.player.GetPosition()
+	rot := s.player.GetRotation()
+	s.bullets = append(s.bullets, projectiles.NewBullet(pos, rot))
 }
