@@ -66,12 +66,14 @@ const (
 	StartBackgroundPath = "images/startScene/startpage_background.png"
 	PlayButtonPath      = "images/startScene/play_button.png"
 	GameBackgroundPath  = "images/gameScene/Background/background.png"
+	PlayerBulletPath    = "images/gameScene/Bullets/PlayerBullets/PlayerBullet_Single.png"
 )
 
 // Smaller assets loaded at startup
 var (
 	PlayerSprite = LoadImage(PlayerSpritePath)
 	PlayButton   = LoadImage(PlayButtonPath)
+	PlayerBullet = LoadImage(PlayerBulletPath)
 )
 
 // GetStartBackground returns the start background image, loading it if necessary

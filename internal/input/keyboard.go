@@ -28,4 +28,5 @@ const (
 	KeyRight = ebiten.KeyRight
 	KeyUp    = ebiten.KeyUp
 	KeyDown  = ebiten.KeyDown
+	KeySpace = ebiten.KeySpace
 )
