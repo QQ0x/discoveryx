@@ -205,7 +205,7 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 						}
 					}
 					currentD := spawnPos.X*normalX + spawnPos.Y*normalY
-					offset := deepest - currentD
+					offset := deepest - enemyHeight/2 - currentD
 					spawnX := spawnPos.X + normalX*offset
 					spawnY := spawnPos.Y + normalY*offset
 
@@ -214,10 +214,10 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					valid := false
 					attempts := 0
 					for attempts < 5 {
-						blX := spawnX - tangent.X*enemyWidth/2 + normalX*enemyHeight/2
-						blY := spawnY - tangent.Y*enemyWidth/2 + normalY*enemyHeight/2
-						brX := spawnX + tangent.X*enemyWidth/2 + normalX*enemyHeight/2
-						brY := spawnY + tangent.Y*enemyWidth/2 + normalY*enemyHeight/2
+						blX := spawnX - tangent.X*enemyWidth/2 - normalX*enemyHeight/2
+						blY := spawnY - tangent.Y*enemyWidth/2 - normalY*enemyHeight/2
+						brX := spawnX + tangent.X*enemyWidth/2 - normalX*enemyHeight/2
+						brY := spawnY + tangent.Y*enemyWidth/2 - normalY*enemyHeight/2
 						if isSolid(world, blX, blY) && isSolid(world, brX, brY) && isTransparent(world, spawnX, spawnY) {
 							valid = true
 							break
