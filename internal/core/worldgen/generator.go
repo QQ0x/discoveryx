@@ -296,7 +296,7 @@ func (g *WorldGenerator) generateMainPath(worldMap *WorldMap, config *WorldGenCo
 
 					if hasToConnector && hasToStartConnector {
 						canHaveBothConnectors = true
-						snippetRotations[s] = rotation  // Store the correct rotation
+						snippetRotations[s] = rotation // Store the correct rotation
 						break
 					}
 				}
@@ -379,7 +379,7 @@ func (g *WorldGenerator) generateMainPath(worldMap *WorldMap, config *WorldGenCo
 
 	// Check if the last cell is adjacent to the start cell
 	dx, dy := 0-currentX, 0-currentY
-	if abs(dx) + abs(dy) != 1 {
+	if abs(dx)+abs(dy) != 1 {
 		return fmt.Errorf("last cell of main path is not adjacent to the start cell")
 	}
 
@@ -801,7 +801,7 @@ func (g *WorldGenerator) generateDeadEnd(worldMap *WorldMap, fromCell *WorldCell
 			if newCell.BranchDepth < config.BranchMaxDepth {
 				// Try to create a dead-end with a single-connector snippet
 				deadEndSnippets := make([]*WorldSnippet, 0)
-				for _, s := range g.Registry.GetSnippetsByConnector((conn+180)%360) {
+				for _, s := range g.Registry.GetSnippetsByConnector((conn + 180) % 360) {
 					if len(s.Connectors) == 1 {
 						deadEndSnippets = append(deadEndSnippets, s)
 					}
@@ -915,8 +915,8 @@ func (g *WorldGenerator) postProcessWorldMap(worldMap *WorldMap, rng *rand.Rand)
 	// Ensure no paths/connectors point to the world borders or to cells without matching connectors
 	// This is done by checking all cells in the world, not just those adjacent to borders
 	// This satisfies requirement 2: Each connector must necessarily be adjacent to (connected with) another connector
-	for y := minY + 2; y <= maxY - 2; y++ {
-		for x := minX + 2; x <= maxX - 2; x++ {
+	for y := minY + 2; y <= maxY-2; y++ {
+		for x := minX + 2; x <= maxX-2; x++ {
 			cell := worldMap.GetCell(x, y)
 			if cell == nil || len(cell.Snippet.Connectors) == 0 {
 				continue
@@ -997,8 +997,8 @@ func (g *WorldGenerator) postProcessWorldMap(worldMap *WorldMap, rng *rand.Rand)
 
 	// First pass: Ensure sides without connectors have empty snippets adjacent to them
 	// This satisfies requirement 7: On each side of a snippet where there is no connector, an empty snippet must be adjacent (Worldgen_x.png)
-	for y := minY + 2; y <= maxY - 2; y++ {
-		for x := minX + 2; x <= maxX - 2; x++ {
+	for y := minY + 2; y <= maxY-2; y++ {
+		for x := minX + 2; x <= maxX-2; x++ {
 			cell := worldMap.GetCell(x, y)
 			// Skip empty cells or cells with no snippet
 			if cell == nil {
@@ -1193,15 +1193,15 @@ func (g *WorldGenerator) postProcessWorldMap(worldMap *WorldMap, rng *rand.Rand)
 		}
 	}
 
- // Second pass: Ensure each empty snippet has at least 2 other empty snippets adjacent to it
+	// Second pass: Ensure each empty snippet has at least 2 other empty snippets adjacent to it
 	// This satisfies requirement 8: At least 2 other empty snippets must be adjacent to each empty snippet
 
 	// First, create a map to track which empty snippets need additional adjacent empty snippets
 	emptySnippetsNeedingAdjacent := make(map[string]bool)
 
 	// Identify all empty snippets that need additional adjacent empty snippets
-	for y := minY + 2; y <= maxY - 2; y++ {
-		for x := minX + 2; x <= maxX - 2; x++ {
+	for y := minY + 2; y <= maxY-2; y++ {
+		for x := minX + 2; x <= maxX-2; x++ {
 			cell := worldMap.GetCell(x, y)
 			if cell == nil || len(cell.Snippet.Connectors) > 0 {
 				continue
@@ -1242,8 +1242,8 @@ func (g *WorldGenerator) postProcessWorldMap(worldMap *WorldMap, rng *rand.Rand)
 
 	// Now process each empty snippet that needs additional adjacent empty snippets
 	// We do this in a separate pass to avoid conflicts between different empty snippets
-	for y := minY + 2; y <= maxY - 2; y++ {
-		for x := minX + 2; x <= maxX - 2; x++ {
+	for y := minY + 2; y <= maxY-2; y++ {
+		for x := minX + 2; x <= maxX-2; x++ {
 			key := fmt.Sprintf("%d,%d", x, y)
 			if !emptySnippetsNeedingAdjacent[key] {
 				continue
@@ -1989,8 +1989,8 @@ func (g *WorldGenerator) postProcessWorldMap(worldMap *WorldMap, rng *rand.Rand)
 	// One more pass to ensure all snippets are exactly adjacent to each other (no gaps or overlaps)
 	// This is done by checking all cells and ensuring they have neighbors in all four directions
 	// This satisfies requirement 1: All snippets must be exactly next to each other, no free spaces or overlaps are allowed
-	for y := minY + 1; y <= maxY - 1; y++ {
-		for x := minX + 1; x <= maxX - 1; x++ {
+	for y := minY + 1; y <= maxY-1; y++ {
+		for x := minX + 1; x <= maxX-1; x++ {
 			cell := worldMap.GetCell(x, y)
 			if cell == nil {
 				continue

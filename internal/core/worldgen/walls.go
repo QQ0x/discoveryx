@@ -4,6 +4,7 @@ import (
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
+	"sync"
 )
 
 // WallPoint represents a point on a wall with world coordinates
@@ -12,8 +13,28 @@ type WallPoint struct {
 	Normal math.Vector // Normal vector of the wall (points away from the rock)
 }
 
+// wallCache stores detected walls for snippets to avoid reprocessing unchanged snippets
+var wallCache = struct {
+	sync.RWMutex
+	data map[string][]WallPoint
+}{
+	data: make(map[string][]WallPoint),
+}
+
 // DetectWallsInSnippet detects all wall points within a snippet
+// If the snippet hasn't changed (based on filename), it returns cached wall data
 func DetectWallsInSnippet(snippet *WorldSnippet) []WallPoint {
+	// Check if we have this snippet's walls in the cache
+	wallCache.RLock()
+	cachedWalls, exists := wallCache.data[snippet.Filename]
+	wallCache.RUnlock()
+
+	// If walls exist in cache, return them
+	if exists {
+		return cachedWalls
+	}
+
+	// Otherwise, detect walls
 	walls := []WallPoint{}
 
 	// Get image dimensions
@@ -77,8 +98,13 @@ func DetectWallsInSnippet(snippet *WorldSnippet) []WallPoint {
 					}
 				}
 			}
-		}
+ 	}
 	}
+
+	// Store the detected walls in the cache
+	wallCache.Lock()
+	wallCache.data[snippet.Filename] = walls
+	wallCache.Unlock()
 
 	return walls
 }

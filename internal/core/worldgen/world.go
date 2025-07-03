@@ -51,8 +51,8 @@ func NewGeneratedWorld(width, height int, generator *WorldGenerator, config *Wor
 		mainPathCell := world.worldMap.MainPathCells[len(world.worldMap.MainPathCells)/2] // Use middle of the path for better gameplay
 
 		// Convert cell coordinates to world coordinates
-		world.playerX = float64(mainPathCell.X * CellSize + CellSize/2)
-		world.playerY = float64(mainPathCell.Y * CellSize + CellSize/2)
+		world.playerX = float64(mainPathCell.X*CellSize + CellSize/2)
+		world.playerY = float64(mainPathCell.Y*CellSize + CellSize/2)
 	}
 
 	// Organize cells into chunks
@@ -242,8 +242,8 @@ func (w *GeneratedWorld) Draw(screen *ebiten.Image, offsetX, offsetY float64) {
 		if chunk.IsLoaded {
 			// Calculate the world coordinates for this chunk
 			// Apply camera offset only once, consistent with player and enemy drawing
-			worldX := centerX + float64(chunk.X * ChunkSize * CellSize) + offsetX
-			worldY := centerY + float64(chunk.Y * ChunkSize * CellSize) + offsetY
+			worldX := centerX + float64(chunk.X*ChunkSize*CellSize) + offsetX
+			worldY := centerY + float64(chunk.Y*ChunkSize*CellSize) + offsetY
 
 			// Draw the chunk - convert final position to int to avoid subpixel rendering issues
 			chunk.Draw(screen, int(worldX), int(worldY), CellSize)

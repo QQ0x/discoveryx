@@ -2,8 +2,10 @@ package enemies
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/utils/math"
+	"log"
 	stdmath "math"
 	"math/rand"
 	"time"
@@ -49,7 +51,12 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 	// Load enemy image to get dimensions
 	enemyImage := assets.GetImage(s.Config.ImagePath)
-	enemyWidth := float64(enemyImage.Bounds().Dx())
+	// Get the original dimensions
+	originalWidth := float64(enemyImage.Bounds().Dx())
+	originalHeight := float64(enemyImage.Bounds().Dy())
+	// Apply the same 0.5 scaling factor that's used in Enemy.Draw()
+	enemyWidth := originalWidth * 0.5
+	enemyHeight := originalHeight * 0.5
 
 	// List of all spawned enemies to ensure minimum distance
 	spawnedPositions := []math.Vector{}
@@ -63,15 +70,27 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 	playerChunkX := playerCellX / worldgen.ChunkSize
 	playerChunkY := playerCellY / worldgen.ChunkSize
 
+	// Set a maximum number of enemies to spawn to prevent excessive processing
+	maxTotalEnemies := 50
+
 	// Iterate through chunks within visibility radius
 	for y := playerChunkY - worldgen.VisibilityRadius; y <= playerChunkY+worldgen.VisibilityRadius; y++ {
 		for x := playerChunkX - worldgen.VisibilityRadius; x <= playerChunkX+worldgen.VisibilityRadius; x++ {
+			// Check if we've already spawned the maximum number of enemies
+			if len(spawnedEnemies) >= maxTotalEnemies {
+				return spawnedEnemies
+			}
+
 			chunk := world.GetChunk(x, y)
 			if chunk == nil || !chunk.IsLoaded {
 				continue
 			}
 
-			// Collect all wall points from this chunk
+			// Step 1: Collection of wall points
+			if constants.DebugLogging {
+				log.Printf("Step 1: Starting collection of wall points for chunk (%d, %d)", x, y)
+			}
+
 			allWallPoints := []worldgen.WallPoint{}
 
 			// Iterate through all possible cell positions in this chunk
@@ -98,30 +117,84 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 				}
 			}
 
+			if constants.DebugLogging {
+				log.Printf("Step 1: Collected %d wall points for chunk (%d, %d)", len(allWallPoints), x, y)
+			}
+
+			// Limit the number of wall points to process to prevent excessive computation
+			maxWallPoints := 1000
+			if len(allWallPoints) > maxWallPoints {
+				// If we have too many wall points, randomly select a subset
+				shuffledIndices := rng.Perm(len(allWallPoints))
+				newWallPoints := make([]worldgen.WallPoint, maxWallPoints)
+				for i := 0; i < maxWallPoints; i++ {
+					newWallPoints[i] = allWallPoints[shuffledIndices[i]]
+				}
+				allWallPoints = newWallPoints
+			}
+
+			// Step 2: Connecting points to a line and segmentation
+			if constants.DebugLogging {
+				log.Printf("Step 2: Starting connection of wall points to segments for chunk (%d, %d)", x, y)
+			}
+
 			// Find continuous wall segments
 			wallSegments := s.findWallSegments(allWallPoints)
+
+			// Limit the number of wall segments to process
+			maxSegments := 50
+			if len(wallSegments) > maxSegments {
+				wallSegments = wallSegments[:maxSegments]
+			}
+
+			if constants.DebugLogging {
+				log.Printf("Step 2: Created %d wall segments for chunk (%d, %d)", len(wallSegments), x, y)
+			}
 
 			// For each wall segment, try to spawn enemies
 			for _, segment := range wallSegments {
 				// Check if the segment is long enough for an enemy
-				if len(segment) < 2 || s.getSegmentLength(segment) < s.Config.MinWallLength {
+				segmentLength := s.getSegmentLength(segment)
+				if constants.DebugLogging {
+					log.Printf("Segment length: %.2f (minimum: %.2f)", segmentLength, s.Config.MinWallLength)
+				}
+				if len(segment) < 2 || segmentLength < s.Config.MinWallLength {
+					if constants.DebugLogging {
+						log.Printf("Segment length check failed: %.2f (minimum: %.2f)", segmentLength, s.Config.MinWallLength)
+					}
 					continue
 				}
 
 				// Check if the segment is flat enough
-				if !s.isSegmentFlat(segment, s.Config.MaxWallDeviation) {
+				isFlat := s.isSegmentFlat(segment, s.Config.MaxWallDeviation)
+				if constants.DebugLogging {
+					log.Printf("Segment flatness: %v (max deviation: %.2f)", isFlat, s.Config.MaxWallDeviation)
+				}
+				if !isFlat {
+					if constants.DebugLogging {
+						log.Printf("Segment flatness check failed (max deviation: %.2f)", s.Config.MaxWallDeviation)
+					}
 					continue
 				}
 
 				// Calculate how many enemies can fit on this segment
-				segmentLength := s.getSegmentLength(segment)
 				// We need space for the enemy width plus the minimum distance between enemies
 				// The formula accounts for the fact that we don't need extra space after the last enemy
 				maxEnemies := int((segmentLength + s.Config.MinDistanceBetweenEnemies) / (enemyWidth + s.Config.MinDistanceBetweenEnemies))
 
+				if constants.DebugLogging {
+					log.Printf("maxEnemies calculation: maxEnemies=%d (segmentLength=%.2f, enemyWidth=%.2f, minDistance=%.2f)",
+						maxEnemies, segmentLength, enemyWidth, s.Config.MinDistanceBetweenEnemies)
+				}
+
 				// If segment is too short for even one enemy, skip
 				if maxEnemies < 1 {
 					continue
+				}
+
+				// Limit the maximum number of enemies per segment
+				if maxEnemies > 5 {
+					maxEnemies = 5
 				}
 
 				// Determine how many enemies to actually spawn (based on chance)
@@ -132,8 +205,15 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					}
 				}
 
+				if constants.DebugLogging {
+					log.Printf("Spawn chance calculation: numToSpawn=%d (maxEnemies: %d, chance: %.2f)", numToSpawn, maxEnemies, spawnChance)
+				}
+
 				// If no enemies to spawn, skip
 				if numToSpawn == 0 {
+					if constants.DebugLogging {
+						log.Printf("No enemies to spawn (numToSpawn=0), skipping segment")
+					}
 					continue
 				}
 
@@ -151,9 +231,23 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 				// For each enemy to spawn
 				for i := 1; i <= numToSpawn; i++ {
+					// Check if we've already spawned the maximum number of enemies
+					if len(spawnedEnemies) >= maxTotalEnemies {
+						return spawnedEnemies
+					}
+
+					// Step 3: Placement of the enemy on the segment
+					if constants.DebugLogging {
+						log.Printf("Step 3: Starting placement of enemy %d/%d on segment (length: %.2f)", i, numToSpawn, segmentLength)
+					}
+
 					// Calculate position along the segment
 					t := float64(i) * spacing / segmentLength
 					spawnPos := s.interpolateSegment(segment, t)
+
+					if constants.DebugLogging {
+						log.Printf("Step 3: Calculated initial position at (%.2f, %.2f) with t=%.2f", spawnPos.X, spawnPos.Y, t)
+					}
 
 					// Check minimum distance to other spawned enemies
 					tooClose := false
@@ -169,11 +263,23 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					}
 
 					if tooClose {
+						if constants.DebugLogging {
+							log.Printf("Step 3: Position too close to existing enemy, skipping")
+						}
 						continue
+					}
+
+					// Step 4: Calculation of rotation
+					if constants.DebugLogging {
+						log.Printf("Step 4: Starting calculation of rotation for enemy at (%.2f, %.2f)", spawnPos.X, spawnPos.Y)
 					}
 
 					// Calculate wall normal at this position
 					normal := s.getSegmentNormalAt(segment, t)
+
+					if constants.DebugLogging {
+						log.Printf("Step 4: Got normal vector (%.2f, %.2f)", normal.X, normal.Y)
+					}
 
 					// Ensure normal is normalized
 					normalX, normalY := normal.X, normal.Y
@@ -192,28 +298,131 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					// atan2 gives angle in radians, convert to degrees
 					angle := stdmath.Atan2(tangentX, -tangentY) * 180 / stdmath.Pi
 
+					if constants.DebugLogging {
+						log.Printf("Step 4: Calculated rotation angle: %.2f degrees", angle)
+					}
+
 					// Choose random enemy type
 					enemyType := enemyTypes[rng.Intn(len(enemyTypes))]
 
-					// Offset spawn position in direction of normal vector so it sits on the wall
-					// Use the normalized normal vector for consistent offset
-					// Use a larger offset to ensure enemies spawn on the wall, not inside it
-					// This uses the deepest point defined as a wall
-					spawnX := spawnPos.X + normalX*5.0
-					spawnY := spawnPos.Y + normalY*5.0
+					// Initial offset spawn position in direction of normal vector
+					// This is just a starting point, we'll adjust it based on transparency checks
+					initialOffsetX := 5.0 // Initial offset to ensure enemy is on the wall
+					spawnX := spawnPos.X + normalX*initialOffsetX
+					spawnY := spawnPos.Y + normalY*initialOffsetX
 
-					// Create the enemy entity
+					// Get the cell and snippet at the spawn position
+					cell := world.GetCellAt(int(spawnX), int(spawnY))
+					if cell == nil || cell.Snippet == nil {
+						continue // Skip if we can't get the cell or snippet
+					}
+
+					// Step 5: Validation and adjustment of position
+					if constants.DebugLogging {
+						log.Printf("Step 5: Starting validation and adjustment of position for enemy at (%.2f, %.2f)", spawnX, spawnY)
+					}
+
+					// Adjust position to ensure enemy is properly anchored to the wall
+					// We need to check if the bottom points of the enemy are in the rock (non-transparent)
+					// and if the center of the enemy is in the air (transparent)
+					validPosition := false
+					maxAdjustmentAttempts := 5 // Reduced from 10 to 5 to prevent excessive iterations
+					adjustmentStep := 1.0      // Step size for position adjustment
+
+					for attempt := 0; attempt < maxAdjustmentAttempts && !validPosition; attempt++ {
+						if constants.DebugLogging {
+							log.Printf("Step 5: Adjustment attempt %d/%d at position (%.2f, %.2f)", attempt+1, maxAdjustmentAttempts, spawnX, spawnY)
+						}
+
+						// Calculate world coordinates relative to the cell
+						relativeX := int(spawnX) % worldgen.CellSize
+						relativeY := int(spawnY) % worldgen.CellSize
+						if relativeX < 0 {
+							relativeX += worldgen.CellSize
+						}
+						if relativeY < 0 {
+							relativeY += worldgen.CellSize
+						}
+
+						// Calculate the bottom left and bottom right points of the enemy
+						// These points should be in the rock (non-transparent)
+						bottomLeftX := relativeX - int(enemyWidth/4)
+						bottomLeftY := relativeY + int(enemyHeight/4)
+						bottomRightX := relativeX + int(enemyWidth/4)
+						bottomRightY := relativeY + int(enemyHeight/4)
+
+						// Calculate the center point of the enemy
+						// This point should be in the air (transparent)
+						centerX := relativeX
+						centerY := relativeY - int(enemyHeight/4)
+
+						// Check if the bottom points are in the rock and the center is in the air
+						bottomLeftInRock := s.isPointInRock(cell, bottomLeftX, bottomLeftY)
+						bottomRightInRock := s.isPointInRock(cell, bottomRightX, bottomRightY)
+						centerInAir := !s.isPointInRock(cell, centerX, centerY)
+
+						if constants.DebugLogging {
+							log.Printf("Step 5: Check points - bottomLeft(%d,%d): inRock=%v, bottomRight(%d,%d): inRock=%v, center(%d,%d): inAir=%v",
+								bottomLeftX, bottomLeftY, bottomLeftInRock,
+								bottomRightX, bottomRightY, bottomRightInRock,
+								centerX, centerY, centerInAir)
+						}
+
+						if bottomLeftInRock && bottomRightInRock && centerInAir {
+							validPosition = true
+							if constants.DebugLogging {
+								log.Printf("Step 5: Found valid position at (%.2f, %.2f)", spawnX, spawnY)
+							}
+						} else if !bottomLeftInRock || !bottomRightInRock {
+							// If bottom points are not in rock, move deeper into the wall
+							spawnX += normalX * adjustmentStep
+							spawnY += normalY * adjustmentStep
+							if constants.DebugLogging {
+								log.Printf("Step 5: Bottom points not in rock, moving deeper into wall to (%.2f, %.2f)", spawnX, spawnY)
+							}
+						} else if !centerInAir {
+							// If center is not in air, move away from the wall
+							spawnX -= normalX * adjustmentStep
+							spawnY -= normalY * adjustmentStep
+							if constants.DebugLogging {
+								log.Printf("Step 5: Center not in air, moving away from wall to (%.2f, %.2f)", spawnX, spawnY)
+							}
+						}
+					}
+
+					// Skip if we couldn't find a valid position
+					if !validPosition {
+						if constants.DebugLogging {
+							log.Printf("Step 5: Could not find valid position after %d attempts, skipping", maxAdjustmentAttempts)
+						}
+						continue
+					}
+
+					// Step 6: Finalization of placement
+					if constants.DebugLogging {
+						log.Printf("Step 6: Starting finalization of enemy placement at (%.2f, %.2f) with rotation %.2f", spawnX, spawnY, angle)
+					}
+
+					// Create the enemy entity with the adjusted position
 					imagePath := "images/gameScene/Enemies/" + enemyType + ".png"
 					enemy := NewEnemy(enemyType, spawnX, spawnY, angle, imagePath)
 
 					// Add to the list of spawned enemies
 					spawnedEnemies = append(spawnedEnemies, enemy)
 					spawnedPositions = append(spawnedPositions, math.Vector{X: spawnX, Y: spawnY})
+
+					if constants.DebugLogging {
+						log.Printf("Step 6: Successfully created enemy of type '%s' at (%.2f, %.2f) with rotation %.2f", enemyType, spawnX, spawnY, angle)
+						log.Printf("Step 6: Total enemies spawned so far: %d", len(spawnedEnemies))
+					}
 				}
 			}
 		}
 	}
 
+	if constants.DebugLogging {
+		log.Printf("SpawnEnemiesOnWalls: Finished spawning %d enemies", len(spawnedEnemies))
+	}
 	return spawnedEnemies
 }
 
@@ -246,57 +455,68 @@ func (s *Spawner) findWallSegments(wallPoints []worldgen.WallPoint) [][]worldgen
 	return segments
 }
 
-// growSegment recursively adds connected wall points to a segment
-func (s *Spawner) growSegment(wallPoints []worldgen.WallPoint, visited []bool, segment *[]worldgen.WallPoint, currentIdx int) {
-	current := wallPoints[currentIdx]
+// growSegment iteratively adds connected wall points to a segment
+func (s *Spawner) growSegment(wallPoints []worldgen.WallPoint, visited []bool, segment *[]worldgen.WallPoint, startIdx int) {
+	// Use a queue to process points in a breadth-first manner
+	queue := []int{startIdx}
 
-	// Check all other wall points
-	for i := 0; i < len(wallPoints); i++ {
-		if visited[i] {
-			continue
-		}
+	// Process points until the queue is empty
+	for len(queue) > 0 {
+		// Get the next point from the queue
+		currentIdx := queue[0]
+		queue = queue[1:] // Remove the processed point
 
-		candidate := wallPoints[i]
+		current := wallPoints[currentIdx]
 
-		// Check if this point is close enough to be part of the same segment
-		dx := candidate.X - current.X
-		dy := candidate.Y - current.Y
-		distSq := dx*dx + dy*dy
+		// Check all other wall points
+		for i := 0; i < len(wallPoints); i++ {
+			if visited[i] {
+				continue
+			}
 
-		// Normalize both normals before calculating dot product
-		currentNormalX, currentNormalY := current.Normal.X, current.Normal.Y
-		currentMagnitude := stdmath.Sqrt(currentNormalX*currentNormalX + currentNormalY*currentNormalY)
-		if currentMagnitude > 0 {
-			currentNormalX /= currentMagnitude
-			currentNormalY /= currentMagnitude
-		}
+			candidate := wallPoints[i]
 
-		candidateNormalX, candidateNormalY := candidate.Normal.X, candidate.Normal.Y
-		candidateMagnitude := stdmath.Sqrt(candidateNormalX*candidateNormalX + candidateNormalY*candidateNormalY)
-		if candidateMagnitude > 0 {
-			candidateNormalX /= candidateMagnitude
-			candidateNormalY /= candidateMagnitude
-		}
+			// Check if this point is close enough to be part of the same segment
+			dx := candidate.X - current.X
+			dy := candidate.Y - current.Y
+			distSq := dx*dx + dy*dy
 
-		// Check if normals are similar enough (dot product close to 1)
-		normalDot := candidateNormalX*currentNormalX + candidateNormalY*currentNormalY
+			// Normalize both normals before calculating dot product
+			currentNormalX, currentNormalY := current.Normal.X, current.Normal.Y
+			currentMagnitude := stdmath.Sqrt(currentNormalX*currentNormalX + currentNormalY*currentNormalY)
+			if currentMagnitude > 0 {
+				currentNormalX /= currentMagnitude
+				currentNormalY /= currentMagnitude
+			}
 
-		// Ensure dot product is within valid range [-1, 1]
-		if normalDot < -1.0 {
-			normalDot = -1.0
-		} else if normalDot > 1.0 {
-			normalDot = 1.0
-		}
+			candidateNormalX, candidateNormalY := candidate.Normal.X, candidate.Normal.Y
+			candidateMagnitude := stdmath.Sqrt(candidateNormalX*candidateNormalX + candidateNormalY*candidateNormalY)
+			if candidateMagnitude > 0 {
+				candidateNormalX /= candidateMagnitude
+				candidateNormalY /= candidateMagnitude
+			}
 
-		// Convert dot product to angle in degrees
-		angle := stdmath.Acos(normalDot) * 180 / stdmath.Pi
+			// Check if normals are similar enough (dot product close to 1)
+			normalDot := candidateNormalX*currentNormalX + candidateNormalY*currentNormalY
 
-		// If point is close and has similar normal (angle less than 45 degrees), add to segment
-		// 4.0 is distance squared (2 pixels)
-		if distSq < 4.0 && angle < 45.0 {
-			*segment = append(*segment, candidate)
-			visited[i] = true
-			s.growSegment(wallPoints, visited, segment, i)
+			// Ensure dot product is within valid range [-1, 1]
+			if normalDot < -1.0 {
+				normalDot = -1.0
+			} else if normalDot > 1.0 {
+				normalDot = 1.0
+			}
+
+			// Convert dot product to angle in degrees
+			angle := stdmath.Acos(normalDot) * 180 / stdmath.Pi
+
+			// If point is close and has similar normal (angle less than 45 degrees), add to segment
+			// 25.0 is distance squared (5 pixels)
+			if distSq < 250.0 && angle < 200.0 {
+				*segment = append(*segment, candidate)
+				visited[i] = true
+				// Add this point to the queue for processing
+				queue = append(queue, i)
+			}
 		}
 	}
 }
@@ -476,4 +696,95 @@ func (s *Spawner) getSegmentNormalAt(segment []worldgen.WallPoint, t float64) ma
 
 	// Fallback to last point's normal
 	return segment[len(segment)-1].Normal
+}
+
+// isPointInRock checks if a point in a cell is in a rock (non-transparent) or in air (transparent)
+func (s *Spawner) isPointInRock(cell *worldgen.WorldCell, x, y int) bool {
+	if constants.DebugLogging {
+		log.Printf("isPointInRock: Checking point (%d, %d)", x, y)
+	}
+
+	if cell == nil || cell.Snippet == nil || cell.Snippet.Image == nil {
+		if constants.DebugLogging {
+			log.Printf("isPointInRock: Invalid cell or snippet, returning false")
+		}
+		return false
+	}
+
+	// Get the snippet image
+	img := cell.Snippet.Image
+
+	// Get image dimensions
+	width, height := img.Bounds().Dx(), img.Bounds().Dy()
+
+	if constants.DebugLogging {
+		log.Printf("isPointInRock: Image dimensions: %dx%d", width, height)
+	}
+
+	// Check if the point is within the image bounds
+	if x < 0 || x >= width || y < 0 || y >= height {
+		if constants.DebugLogging {
+			log.Printf("isPointInRock: Point (%d, %d) is outside image bounds, returning false", x, y)
+		}
+		return false
+	}
+
+	// Apply rotation if needed
+	if cell.Rotation != 0 {
+		if constants.DebugLogging {
+			log.Printf("isPointInRock: Applying rotation of %d degrees", cell.Rotation)
+		}
+
+		// Rotation angle in radians
+		angle := float64(cell.Rotation) * (stdmath.Pi / 180.0)
+
+		// Snippet center
+		centerX := float64(width) / 2
+		centerY := float64(height) / 2
+
+		// Point relative to center
+		relX := float64(x) - centerX
+		relY := float64(y) - centerY
+
+		// Apply inverse rotation
+		cosA := stdmath.Cos(-angle)
+		sinA := stdmath.Sin(-angle)
+		rotX := relX*cosA - relY*sinA
+		rotY := relX*sinA + relY*cosA
+
+		// Back to absolute point
+		originalX, originalY := x, y
+		x = int(rotX + centerX)
+		y = int(rotY + centerY)
+
+		if constants.DebugLogging {
+			log.Printf("isPointInRock: Rotated point from (%d, %d) to (%d, %d)", originalX, originalY, x, y)
+		}
+
+		// Check if the rotated point is within the image bounds
+		if x < 0 || x >= width || y < 0 || y >= height {
+			if constants.DebugLogging {
+				log.Printf("isPointInRock: Rotated point (%d, %d) is outside image bounds, returning false", x, y)
+			}
+			return false
+		}
+	}
+
+	// Use At() method to get the color at the specified point
+	// This is more efficient than creating a new image and reading all pixel data
+	_, _, _, a := img.At(x, y).RGBA()
+
+	// If alpha > 0, the pixel is not transparent (rock)
+	// The alpha value from RGBA() is in the range [0, 65535]
+	isRock := a > 0
+
+	if constants.DebugLogging {
+		if isRock {
+			log.Printf("isPointInRock: Point (%d, %d) is in rock (alpha=%d), returning true", x, y, a)
+		} else {
+			log.Printf("isPointInRock: Point (%d, %d) is in air (alpha=%d), returning false", x, y, a)
+		}
+	}
+
+	return isRock
 }

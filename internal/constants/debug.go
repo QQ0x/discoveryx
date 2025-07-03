@@ -4,5 +4,5 @@ package constants
 // Debug-related constants
 const (
 	// DebugLogging controls whether debug log messages are printed
-	DebugLogging = false
+	DebugLogging = true
 )
