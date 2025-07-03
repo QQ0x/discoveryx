@@ -148,13 +148,8 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 			// Limit the number of wall points to process to prevent excessive computation
 			maxWallPoints := 1000
 			if len(allWallPoints) > maxWallPoints {
-				// If we have too many wall points, randomly select a subset
-				shuffledIndices := rng.Perm(len(allWallPoints))
-				newWallPoints := make([]worldgen.WallPoint, maxWallPoints)
-				for i := 0; i < maxWallPoints; i++ {
-					newWallPoints[i] = allWallPoints[shuffledIndices[i]]
-				}
-				allWallPoints = newWallPoints
+				// Simply trim the slice to keep wall point order
+				allWallPoints = allWallPoints[:maxWallPoints]
 			}
 
 			// Step 2: Connecting points to a line and segmentation
@@ -334,7 +329,8 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 					// Initial offset spawn position in direction of normal vector
 					// This is just a starting point, we'll adjust it based on transparency checks
-					initialOffsetX := 5.0 // Initial offset to ensure enemy is on the wall
+					// Offset to start slightly away from the wall
+					initialOffsetX := enemyWidth / 2
 					spawnX := spawnPos.X + normalX*initialOffsetX
 					spawnY := spawnPos.Y + normalY*initialOffsetX
 
@@ -353,8 +349,9 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					// We need to check if the bottom points of the enemy are in the rock (non-transparent)
 					// and if the center of the enemy is in the air (transparent)
 					validPosition := false
-					maxAdjustmentAttempts := 5 // Reduced from 10 to 5 to prevent excessive iterations
-					adjustmentStep := 1.0      // Step size for position adjustment
+					// Allow more attempts and bigger steps because cells are large
+					maxAdjustmentAttempts := 20
+					adjustmentStep := 5.0
 
 					for attempt := 0; attempt < maxAdjustmentAttempts && !validPosition; attempt++ {
 						if constants.DebugLogging {
@@ -538,7 +535,7 @@ func (s *Spawner) growSegment(wallPoints []worldgen.WallPoint, visited []bool, s
 
 			// If point is close and has similar normal (angle less than 45 degrees), add to segment
 			// 25.0 is distance squared (5 pixels)
-			if distSq < 250.0 && angle < 200.0 {
+			if distSq < 25.0 && angle < 45.0 {
 				*segment = append(*segment, candidate)
 				visited[i] = true
 				// Add this point to the queue for processing
