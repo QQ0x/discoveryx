@@ -6,16 +6,18 @@ import (
 	"discoveryx/internal/core/gameplay/enemies"
 	"discoveryx/internal/core/gameplay/player"
 	"discoveryx/internal/core/worldgen"
+	"discoveryx/internal/rendering/shaders"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
 )
 
 type GameScene struct {
-	player         *player.Player
-	generatedWorld *worldgen.GeneratedWorld
-	cameraPosition math.Vector      // Camera position for following the player
-	enemies        []*enemies.Enemy // List of enemies in the scene
+	player          *player.Player
+	generatedWorld  *worldgen.GeneratedWorld
+	cameraPosition  math.Vector      // Camera position for following the player
+	enemies         []*enemies.Enemy // List of enemies in the scene
+	brightnessShader *shaders.BrightnessShader // Shader for brightness effect
 }
 
 func NewGameScene(player *player.Player) *GameScene {
@@ -43,6 +45,12 @@ func (s *GameScene) Initialize(state *State) error {
 		generator,
 		config,
 	)
+	if err != nil {
+		return err
+	}
+
+	// Initialize the brightness shader
+	s.brightnessShader, err = shaders.NewBrightnessShader()
 	if err != nil {
 		return err
 	}
@@ -175,6 +183,9 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 	// Get world dimensions from the state
 	worldWidth, worldHeight := state.World.GetWidth(), state.World.GetHeight()
 
+	// Create a temporary image to draw all scene elements
+	tempScreen := ebiten.NewImage(worldWidth, worldHeight)
+
 	// Draw background image scaled to fit screen
 	bgOp := &ebiten.DrawImageOptions{}
 
@@ -199,20 +210,42 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 	scaledHeight := bgHeight * scale
 	bgOp.GeoM.Translate((float64(worldWidth)-scaledWidth)/2, (float64(worldHeight)-scaledHeight)/2)
 
-	screen.DrawImage(gameBg, bgOp)
+	tempScreen.DrawImage(gameBg, bgOp)
 
 	// Draw the generated world if it has been initialized
 	if s.generatedWorld != nil {
 		// Apply camera offset when drawing the world (using float64 for smoother movement)
-		s.generatedWorld.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y)
+		s.generatedWorld.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y)
 	}
 
 	// Draw the enemies with camera offset
 	for _, enemy := range s.enemies {
 		// Draw the enemy with camera offset and world dimensions
-		enemy.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y, worldWidth, worldHeight)
+		enemy.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y, worldWidth, worldHeight)
 	}
 
 	// Draw the player with camera offset
-	s.player.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y)
+	s.player.Draw(tempScreen, s.cameraPosition.X, s.cameraPosition.Y)
+
+	// Apply brightness shader if initialized
+	if s.brightnessShader != nil {
+		// Get player position in screen coordinates
+		playerPos := s.player.GetPosition()
+		screenPosX := playerPos.X + s.cameraPosition.X + float64(worldWidth)/2
+		screenPosY := playerPos.Y + s.cameraPosition.Y + float64(worldHeight)/2
+
+		// Set up shader options
+		op := &ebiten.DrawRectShaderOptions{}
+		op.Images[0] = tempScreen
+		op.Uniforms = map[string]any{
+			"PlayerPos": []float32{float32(screenPosX), float32(screenPosY)},
+			"Radius":    float32(float64(worldWidth) * 0.75), // Use 75% of screen width as radius
+		}
+
+		// Apply shader to the screen
+		screen.DrawRectShader(worldWidth, worldHeight, s.brightnessShader.Shader(), op)
+	} else {
+		// If shader not initialized, just draw the temp screen directly
+		screen.DrawImage(tempScreen, nil)
+	}
 }
