@@ -2,8 +2,10 @@ package enemies
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/utils/math"
+	"log"
 	stdmath "math"
 	"math/rand"
 	"time"
@@ -100,17 +102,28 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 			}
 
 			// Find continuous wall segments
+			if constants.DebugLogging {
+				log.Printf("chunk (%d,%d) collected %d wall points", x, y, len(allWallPoints))
+			}
 			wallSegments := s.findWallSegments(allWallPoints)
+			if constants.DebugLogging {
+				log.Printf("chunk (%d,%d) has %d wall segments", x, y, len(wallSegments))
+			}
 
 			// For each wall segment, try to spawn enemies
-			for _, segment := range wallSegments {
-				// Check if the segment is long enough for an enemy
-				if len(segment) < 2 || s.getSegmentLength(segment) < s.Config.MinWallLength {
+			for idx, segment := range wallSegments {
+				segLen := s.getSegmentLength(segment)
+				if segLen < s.Config.MinWallLength {
+					if constants.DebugLogging {
+						log.Printf("segment %d too short: %.2f < %.2f", idx, segLen, s.Config.MinWallLength)
+					}
 					continue
 				}
 
-				// Check if the segment is flat enough
 				if !s.isSegmentFlat(segment, s.Config.MaxWallDeviation) {
+					if constants.DebugLogging {
+						log.Printf("segment %d not flat enough", idx)
+					}
 					continue
 				}
 
@@ -122,6 +135,9 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 				// If segment is too short for even one enemy, skip
 				if maxEnemies < 1 {
+					if constants.DebugLogging {
+						log.Printf("segment %d no space for enemies", idx)
+					}
 					continue
 				}
 
@@ -135,7 +151,13 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 				// If no enemies to spawn, skip
 				if numToSpawn == 0 {
+					if constants.DebugLogging {
+						log.Printf("segment %d decided to spawn 0/%d enemies", idx, maxEnemies)
+					}
 					continue
+				}
+				if constants.DebugLogging {
+					log.Printf("segment %d will spawn %d enemies (max %d)", idx, numToSpawn, maxEnemies)
 				}
 
 				// Calculate spacing between enemies
@@ -156,6 +178,10 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					t := float64(i) * spacing / segmentLength
 					spawnPos := s.interpolateSegment(segment, t)
 
+					if constants.DebugLogging {
+						log.Printf("segment %d enemy %d initial pos %.2f, %.2f", idx, i, spawnPos.X, spawnPos.Y)
+					}
+
 					// Check minimum distance to other spawned enemies
 					tooClose := false
 					for _, pos := range spawnedPositions {
@@ -170,6 +196,9 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					}
 
 					if tooClose {
+						if constants.DebugLogging {
+							log.Printf("segment %d enemy %d skipped: too close to another", idx, i)
+						}
 						continue
 					}
 
@@ -229,10 +258,19 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 							spawnX += normalX
 							spawnY += normalY
 						}
+						if constants.DebugLogging {
+							log.Printf("segment %d enemy %d adjust attempt %d", idx, i, attempts)
+						}
 						attempts++
 					}
 					if !valid {
+						if constants.DebugLogging {
+							log.Printf("segment %d enemy %d failed validation", idx, i)
+						}
 						continue
+					}
+					if constants.DebugLogging {
+						log.Printf("segment %d enemy %d placed at %.2f, %.2f (angle %.2f)", idx, i, spawnX, spawnY, angle)
 					}
 
 					// Create the enemy entity
