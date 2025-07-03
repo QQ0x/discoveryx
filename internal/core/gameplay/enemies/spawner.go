@@ -50,6 +50,7 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 	// Load enemy image to get dimensions
 	enemyImage := assets.GetImage(s.Config.ImagePath)
 	enemyWidth := float64(enemyImage.Bounds().Dx())
+	enemyHeight := float64(enemyImage.Bounds().Dy())
 
 	// List of all spawned enemies to ensure minimum distance
 	spawnedPositions := []math.Vector{}
@@ -195,12 +196,44 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					// Choose random enemy type
 					enemyType := enemyTypes[rng.Intn(len(enemyTypes))]
 
-					// Offset spawn position in direction of normal vector so it sits on the wall
-					// Use the normalized normal vector for consistent offset
-					// Use a larger offset to ensure enemies spawn on the wall, not inside it
-					// This uses the deepest point defined as a wall
-					spawnX := spawnPos.X + normalX*5.0
-					spawnY := spawnPos.Y + normalY*5.0
+					// Offset based on the deepest point of the segment
+					deepest := stdmath.Inf(1)
+					for _, p := range segment {
+						d := p.X*normalX + p.Y*normalY
+						if d < deepest {
+							deepest = d
+						}
+					}
+					currentD := spawnPos.X*normalX + spawnPos.Y*normalY
+					offset := deepest - currentD
+					spawnX := spawnPos.X + normalX*offset
+					spawnY := spawnPos.Y + normalY*offset
+
+					// Validate spawn position: ensure bottom corners are in rock and center is transparent
+					tangent := math.Vector{X: -normalY, Y: normalX}
+					valid := false
+					attempts := 0
+					for attempts < 5 {
+						blX := spawnX - tangent.X*enemyWidth/2 + normalX*enemyHeight/2
+						blY := spawnY - tangent.Y*enemyWidth/2 + normalY*enemyHeight/2
+						brX := spawnX + tangent.X*enemyWidth/2 + normalX*enemyHeight/2
+						brY := spawnY + tangent.Y*enemyWidth/2 + normalY*enemyHeight/2
+						if isSolid(world, blX, blY) && isSolid(world, brX, brY) && isTransparent(world, spawnX, spawnY) {
+							valid = true
+							break
+						}
+						if !isSolid(world, blX, blY) || !isSolid(world, brX, brY) {
+							spawnX -= normalX
+							spawnY -= normalY
+						} else if !isTransparent(world, spawnX, spawnY) {
+							spawnX += normalX
+							spawnY += normalY
+						}
+						attempts++
+					}
+					if !valid {
+						continue
+					}
 
 					// Create the enemy entity
 					imagePath := "images/gameScene/Enemies/" + enemyType + ".png"
@@ -476,4 +509,45 @@ func (s *Spawner) getSegmentNormalAt(segment []worldgen.WallPoint, t float64) ma
 
 	// Fallback to last point's normal
 	return segment[len(segment)-1].Normal
+}
+
+// isTransparent checks if the pixel at the given world coordinates is transparent.
+func isTransparent(world *worldgen.GeneratedWorld, x, y float64) bool {
+	cell := world.GetCellAt(int(x), int(y))
+	if cell == nil || cell.Snippet == nil {
+		return true
+	}
+
+	localX := x - float64(cell.X*worldgen.CellSize)
+	localY := y - float64(cell.Y*worldgen.CellSize)
+
+	if cell.Rotation != 0 {
+		angle := -float64(cell.Rotation) * (stdmath.Pi / 180.0)
+		cosA := stdmath.Cos(angle)
+		sinA := stdmath.Sin(angle)
+		cx := float64(worldgen.CellSize) / 2
+		cy := float64(worldgen.CellSize) / 2
+		relX := localX - cx
+		relY := localY - cy
+		rotX := relX*cosA - relY*sinA
+		rotY := relX*sinA + relY*cosA
+		localX = rotX + cx
+		localY = rotY + cy
+	}
+
+	px := int(localX)
+	py := int(localY)
+
+	img := cell.Snippet.Image
+	if px < 0 || py < 0 || px >= img.Bounds().Dx() || py >= img.Bounds().Dy() {
+		return true
+	}
+
+	_, _, _, a := img.At(px, py).RGBA()
+	return a == 0
+}
+
+// isSolid checks if the pixel at the given world coordinates is solid (non transparent).
+func isSolid(world *worldgen.GeneratedWorld, x, y float64) bool {
+	return !isTransparent(world, x, y)
 }
