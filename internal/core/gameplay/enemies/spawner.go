@@ -29,9 +29,9 @@ func NewSpawner() *Spawner {
 	return &Spawner{
 		Config: EnemyConfig{
 			ImagePath:                 "images/gameScene/Enemies/enemy_1.png",
-			MinWallLength:             16.0, // Assuming enemy is about 16 pixels wide
-			MaxWallDeviation:          10.0, // Allow 10 degree deviation in wall flatness
-			MinDistanceBetweenEnemies: 32.0, // Minimum 32 pixels between enemies
+			MinWallLength:             8.0,  // Assuming enemy is about 16 pixels wide
+			MaxWallDeviation:          80.0, // Allow 10 degree deviation in wall flatness
+			MinDistanceBetweenEnemies: 15.0, // Minimum 32 pixels between enemies
 		},
 	}
 }
@@ -126,7 +126,7 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 			}
 
 			// Limit the number of wall points to process to prevent excessive computation
-			maxWallPoints := 1000
+			maxWallPoints := 2000
 			if len(allWallPoints) > maxWallPoints {
 				// If we have too many wall points, randomly select a subset
 				shuffledIndices := rng.Perm(len(allWallPoints))
@@ -146,7 +146,7 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 			wallSegments := s.findWallSegments(allWallPoints)
 
 			// Limit the number of wall segments to process
-			maxSegments := 50
+			maxSegments := 100
 			if len(wallSegments) > maxSegments {
 				wallSegments = wallSegments[:maxSegments]
 			}
@@ -197,8 +197,8 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 				}
 
 				// Limit the maximum number of enemies per segment
-				if maxEnemies > 5 {
-					maxEnemies = 5
+				if maxEnemies > 10 {
+					maxEnemies = 10
 				}
 
 				// Determine how many enemies to actually spawn (based on chance)
@@ -327,8 +327,8 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					// We need to check if the bottom points of the enemy are in the rock (non-transparent)
 					// and if the center of the enemy is in the air (transparent)
 					validPosition := false
-					maxAdjustmentAttempts := 5 // Reduced from 10 to 5 to prevent excessive iterations
-					adjustmentStep := 1.0      // Step size for position adjustment
+					maxAdjustmentAttempts := 10
+					adjustmentStep := 1.0 // Step size for position adjustment
 
 					for attempt := 0; attempt < maxAdjustmentAttempts && !validPosition; attempt++ {
 						if constants.DebugLogging {
@@ -551,7 +551,7 @@ func (s *Spawner) growSegment(wallPoints []worldgen.WallPoint, visited []bool, s
 
 			// If point is close and has similar normal (angle less than 45 degrees), add to segment
 			// 25.0 is distance squared (5 pixels)
-			if distSq < 400.0 && angle < 45.0 {
+			if distSq < 900.0 && angle < 45.0 {
 				*segment = append(*segment, candidate)
 				visited[i] = true
 				// Add this point to the queue for processing
