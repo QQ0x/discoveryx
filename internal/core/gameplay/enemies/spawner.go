@@ -39,6 +39,10 @@ func NewSpawner() *Spawner {
 // SpawnObjectsOnWalls spawns objects on walls in the visible world
 func SpawnObjectsOnWalls(world *worldgen.GeneratedWorld, objectTypes []string, spawnChance float64, minDistanceBetweenObjects float64) []*Enemy {
 	spawner := NewSpawner()
+	// Ensure minimum distance is at least 32.0 units to prevent enemies from spawning on top of each other
+	if minDistanceBetweenObjects < 32.0 {
+		minDistanceBetweenObjects = 32.0
+	}
 	// Override the default minimum distance with the one provided
 	spawner.Config.MinDistanceBetweenEnemies = minDistanceBetweenObjects
 	return spawner.SpawnEnemiesOnWalls(world, objectTypes, spawnChance)
@@ -71,7 +75,7 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 	playerChunkY := playerCellY / worldgen.ChunkSize
 
 	// Set a maximum number of enemies to spawn to prevent excessive processing
-	maxTotalEnemies := 50
+	maxTotalEnemies := 500
 
 	// Iterate through chunks within visibility radius
 	for y := playerChunkY - worldgen.VisibilityRadius; y <= playerChunkY+worldgen.VisibilityRadius; y++ {
@@ -291,12 +295,9 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 					// Calculate rotation angle based on normal vector
 					// Default enemy faces up (0 degrees), so we need to rotate based on normal
-					// To align with the wall surface (not perpendicular to it), we need to rotate by 90 degrees
-					// Calculate tangent vector (parallel to wall surface) by rotating normal by 90 degrees
-					tangentX := -normalY
-					tangentY := normalX
+					// Use the normal vector directly without the extra 90-degree rotation
 					// atan2 gives angle in radians, convert to degrees
-					angle := stdmath.Atan2(tangentX, -tangentY) * 180 / stdmath.Pi
+					angle := stdmath.Atan2(normalX, -normalY) * 180 / stdmath.Pi
 
 					if constants.DebugLogging {
 						log.Printf("Step 4: Calculated rotation angle: %.2f degrees", angle)
@@ -346,15 +347,34 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 
 						// Calculate the bottom left and bottom right points of the enemy
 						// These points should be in the rock (non-transparent)
-						bottomLeftX := relativeX - int(enemyWidth/4)
-						bottomLeftY := relativeY + int(enemyHeight/4)
-						bottomRightX := relativeX + int(enemyWidth/4)
-						bottomRightY := relativeY + int(enemyHeight/4)
+						// First calculate the points as if the enemy is facing upward (0 degrees)
+						bottomLeftX := -int(enemyWidth / 4)
+						bottomLeftY := int(enemyHeight / 4)
+						bottomRightX := int(enemyWidth / 4)
+						bottomRightY := int(enemyHeight / 4)
+						centerX := 0
+						centerY := -int(enemyHeight / 4)
 
-						// Calculate the center point of the enemy
-						// This point should be in the air (transparent)
-						centerX := relativeX
-						centerY := relativeY - int(enemyHeight/4)
+						// Convert angle to radians for rotation calculation
+						angleRad := angle * stdmath.Pi / 180.0
+						cosAngle := stdmath.Cos(angleRad)
+						sinAngle := stdmath.Sin(angleRad)
+
+						// Rotate the points according to the calculated angle
+						rotatedBottomLeftX := int(float64(bottomLeftX)*cosAngle - float64(bottomLeftY)*sinAngle)
+						rotatedBottomLeftY := int(float64(bottomLeftX)*sinAngle + float64(bottomLeftY)*cosAngle)
+						rotatedBottomRightX := int(float64(bottomRightX)*cosAngle - float64(bottomRightY)*sinAngle)
+						rotatedBottomRightY := int(float64(bottomRightX)*sinAngle + float64(bottomRightY)*cosAngle)
+						rotatedCenterX := int(float64(centerX)*cosAngle - float64(centerY)*sinAngle)
+						rotatedCenterY := int(float64(centerX)*sinAngle + float64(centerY)*cosAngle)
+
+						// Add the relative position to get the final coordinates
+						bottomLeftX = relativeX + rotatedBottomLeftX
+						bottomLeftY = relativeY + rotatedBottomLeftY
+						bottomRightX = relativeX + rotatedBottomRightX
+						bottomRightY = relativeY + rotatedBottomRightY
+						centerX = relativeX + rotatedCenterX
+						centerY = relativeY + rotatedCenterY
 
 						// Check if the bottom points are in the rock and the center is in the air
 						bottomLeftInRock := s.isPointInRock(cell, bottomLeftX, bottomLeftY)
@@ -394,6 +414,26 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 					if !validPosition {
 						if constants.DebugLogging {
 							log.Printf("Step 5: Could not find valid position after %d attempts, skipping", maxAdjustmentAttempts)
+						}
+						continue
+					}
+
+					// Check minimum distance again with the adjusted position
+					tooClose = false
+					for _, pos := range spawnedPositions {
+						dx := spawnX - pos.X
+						dy := spawnY - pos.Y
+						distSq := dx*dx + dy*dy
+
+						if distSq < s.Config.MinDistanceBetweenEnemies*s.Config.MinDistanceBetweenEnemies {
+							tooClose = true
+							break
+						}
+					}
+
+					if tooClose {
+						if constants.DebugLogging {
+							log.Printf("Step 5: Adjusted position too close to existing enemy, skipping")
 						}
 						continue
 					}
@@ -511,7 +551,7 @@ func (s *Spawner) growSegment(wallPoints []worldgen.WallPoint, visited []bool, s
 
 			// If point is close and has similar normal (angle less than 45 degrees), add to segment
 			// 25.0 is distance squared (5 pixels)
-			if distSq < 250.0 && angle < 200.0 {
+			if distSq < 400.0 && angle < 45.0 {
 				*segment = append(*segment, candidate)
 				visited[i] = true
 				// Add this point to the queue for processing

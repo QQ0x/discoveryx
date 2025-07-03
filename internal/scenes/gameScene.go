@@ -49,7 +49,13 @@ func (s *GameScene) Initialize(state *State) error {
 
 	// Spawn objects (enemies) on walls
 	objectTypes := []string{"enemy_1"}
-	s.enemies = enemies.SpawnObjectsOnWalls(s.generatedWorld, objectTypes, 1.0, 10.0) // 100% chance per wall, minimum distance 10 units
+	s.enemies = enemies.SpawnObjectsOnWalls(s.generatedWorld, objectTypes, 1.0, 32.0) // 100% chance per wall, minimum distance 32 units
+
+	// Provisionally set player position to the first enemy spawn point if enemies were spawned
+	if len(s.enemies) > 0 {
+		firstEnemyPos := s.enemies[0].Position
+		s.player.SetPosition(firstEnemyPos)
+	}
 
 	return nil
 }
