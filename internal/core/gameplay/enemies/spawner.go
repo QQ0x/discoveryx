@@ -41,6 +41,11 @@ func SpawnObjectsOnWalls(world *worldgen.GeneratedWorld, objectTypes []string, s
 	spawner := NewSpawner()
 	// Override the default minimum distance with the one provided
 	spawner.Config.MinDistanceBetweenEnemies = minDistanceBetweenObjects
+
+	if constants.DebugLogging {
+		log.Printf("SpawnObjectsOnWalls: objectTypes=%v spawnChance=%.2f minDistance=%.2f", objectTypes, spawnChance, minDistanceBetweenObjects)
+	}
+
 	return spawner.SpawnEnemiesOnWalls(world, objectTypes, spawnChance)
 }
 
@@ -58,6 +63,11 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 	enemyWidth := originalWidth * 0.5
 	enemyHeight := originalHeight * 0.5
 
+	if constants.DebugLogging {
+		log.Printf("SpawnEnemiesOnWalls: enemyTypes=%v spawnChance=%.2f", enemyTypes, spawnChance)
+		log.Printf("SpawnEnemiesOnWalls: enemy image %.0fx%.0f scaled to %.1fx%.1f", originalWidth, originalHeight, enemyWidth, enemyHeight)
+	}
+
 	// List of all spawned enemies to ensure minimum distance
 	spawnedPositions := []math.Vector{}
 	// List of created enemy entities to return
@@ -70,6 +80,10 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 	playerChunkX := playerCellX / worldgen.ChunkSize
 	playerChunkY := playerCellY / worldgen.ChunkSize
 
+	if constants.DebugLogging {
+		log.Printf("SpawnEnemiesOnWalls: player at (%.2f, %.2f) chunk (%d,%d)", playerX, playerY, playerChunkX, playerChunkY)
+	}
+
 	// Set a maximum number of enemies to spawn to prevent excessive processing
 	maxTotalEnemies := 50
 
@@ -78,11 +92,21 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 		for x := playerChunkX - worldgen.VisibilityRadius; x <= playerChunkX+worldgen.VisibilityRadius; x++ {
 			// Check if we've already spawned the maximum number of enemies
 			if len(spawnedEnemies) >= maxTotalEnemies {
+				if constants.DebugLogging {
+					log.Printf("SpawnEnemiesOnWalls: reached maxTotalEnemies=%d", maxTotalEnemies)
+				}
 				return spawnedEnemies
 			}
 
 			chunk := world.GetChunk(x, y)
 			if chunk == nil || !chunk.IsLoaded {
+				if constants.DebugLogging {
+					if chunk == nil {
+						log.Printf("SpawnEnemiesOnWalls: chunk (%d,%d) does not exist", x, y)
+					} else {
+						log.Printf("SpawnEnemiesOnWalls: chunk (%d,%d) not loaded", x, y)
+					}
+				}
 				continue
 			}
 
@@ -233,6 +257,9 @@ func (s *Spawner) SpawnEnemiesOnWalls(world *worldgen.GeneratedWorld, enemyTypes
 				for i := 1; i <= numToSpawn; i++ {
 					// Check if we've already spawned the maximum number of enemies
 					if len(spawnedEnemies) >= maxTotalEnemies {
+						if constants.DebugLogging {
+							log.Printf("SpawnEnemiesOnWalls: reached maxTotalEnemies=%d", maxTotalEnemies)
+						}
 						return spawnedEnemies
 					}
 

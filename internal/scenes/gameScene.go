@@ -8,6 +8,7 @@ import (
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
+	"log"
 	stdmath "math"
 )
 
@@ -50,6 +51,10 @@ func (s *GameScene) Initialize(state *State) error {
 	// Spawn objects (enemies) on walls
 	objectTypes := []string{"enemy_1"}
 	s.enemies = enemies.SpawnObjectsOnWalls(s.generatedWorld, objectTypes, 1.0, 10.0) // 100% chance per wall, minimum distance 10 units
+
+	if constants.DebugLogging {
+		log.Printf("GameScene.Initialize: spawned %d enemies", len(s.enemies))
+	}
 
 	return nil
 }
