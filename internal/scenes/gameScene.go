@@ -6,6 +6,7 @@ import (
 	"discoveryx/internal/core/gameplay/enemies"
 	"discoveryx/internal/core/gameplay/player"
 	"discoveryx/internal/core/worldgen"
+	"discoveryx/internal/rendering/shaders"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
@@ -16,12 +17,14 @@ type GameScene struct {
 	generatedWorld *worldgen.GeneratedWorld
 	cameraPosition math.Vector      // Camera position for following the player
 	enemies        []*enemies.Enemy // List of enemies in the scene
+	lightBuffer    *ebiten.Image    // buffer for lighting shader
 }
 
 func NewGameScene(player *player.Player) *GameScene {
 	return &GameScene{
 		player:         player,
 		cameraPosition: math.Vector{X: 0, Y: 0},
+		lightBuffer:    nil,
 	}
 }
 
@@ -215,4 +218,26 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 
 	// Draw the player with camera offset
 	s.player.Draw(screen, s.cameraPosition.X, s.cameraPosition.Y)
+
+	// Apply radial brightness around the player
+	width, height := screen.Size()
+	if s.lightBuffer == nil {
+		s.lightBuffer = ebiten.NewImage(width, height)
+	} else {
+		cw, ch := s.lightBuffer.Size()
+		if cw != width || ch != height {
+			s.lightBuffer.Dispose()
+			s.lightBuffer = ebiten.NewImage(width, height)
+		}
+	}
+
+	// Copy current screen to buffer
+	s.lightBuffer.Clear()
+	s.lightBuffer.DrawImage(screen, nil)
+
+	// Calculate player's on-screen position
+	centerX := float64(width)/2 + s.player.GetPosition().X + s.cameraPosition.X
+	centerY := float64(height)/2 + s.player.GetPosition().Y + s.cameraPosition.Y
+
+	shaders.ApplyBrightness(screen, s.lightBuffer, centerX, centerY, constants.LightFalloffRadius, constants.LightMinimum)
 }
