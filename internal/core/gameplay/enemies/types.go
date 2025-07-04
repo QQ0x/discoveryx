@@ -10,6 +10,7 @@ package enemies
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/physics"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -34,6 +35,7 @@ type Enemy struct {
 	Image             *ebiten.Image // Cached enemy sprite for rendering
 	ImagePath         string        // Path to the enemy image in the assets system
 	TimeSinceLastShot float64       // Time elapsed since the enemy last fired
+	Health            Health        // Hit points for the enemy
 }
 
 // NewEnemy creates a new enemy with the specified parameters.
@@ -57,6 +59,7 @@ func NewEnemy(enemyType string, x, y float64, rotation float64, imagePath string
 		Rotation:          rotation,
 		ImagePath:         imagePath,
 		TimeSinceLastShot: 0,
+		Health:            NewHealth(constants.EnemyMaxHealth),
 	}
 }
 
@@ -157,4 +160,15 @@ func (e *Enemy) Draw(screen *ebiten.Image, offsetX, offsetY float64, worldWidth,
 
 	// Draw the enemy sprite with all transformations applied
 	screen.DrawImage(e.Image, op)
+}
+
+// ColliderRadius returns the collision radius used for simple circle
+// collision tests. The value is based on the enemy sprite scaled by 0.5.
+func (e *Enemy) ColliderRadius() float64 {
+	return 16.0
+}
+
+// IsDead reports whether the enemy has zero health.
+func (e *Enemy) IsDead() bool {
+	return e.Health.IsDead()
 }

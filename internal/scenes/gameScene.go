@@ -6,6 +6,7 @@ import (
 	"discoveryx/internal/core/gameplay/enemies"
 	"discoveryx/internal/core/gameplay/player"
 	"discoveryx/internal/core/gameplay/projectiles"
+	"discoveryx/internal/core/physics"
 	"discoveryx/internal/core/worldgen"
 	"discoveryx/internal/input"
 	"discoveryx/internal/rendering/shaders"
@@ -97,6 +98,9 @@ func (s *GameScene) Update(state *State) error {
 		}
 	}
 	s.bullets = activeBullets
+
+	// Resolve bullet and entity collisions and remove destroyed objects
+	s.handleCollisions()
 
 	position := s.player.GetPosition()
 	screenWidth := float64(state.World.GetWidth())
@@ -272,4 +276,48 @@ func (s *GameScene) spawnBullet() {
 	pos := s.player.GetPosition()
 	rot := s.player.GetRotation()
 	s.bullets = append(s.bullets, projectiles.NewBullet(pos, rot, assets.PlayerBullet))
+}
+
+// handleCollisions checks for collisions between bullets, enemies and the player.
+// It removes destroyed objects and applies damage where appropriate.
+func (s *GameScene) handleCollisions() {
+	var remainingBullets []*projectiles.Bullet
+
+	for _, b := range s.bullets {
+		// Determine collision target based on bullet image
+		if b.Image == assets.EnemyBullet {
+			// Enemy bullet -> check player
+			if physics.CircleCollision(b.Position, s.player.GetPosition(), projectiles.BulletRadius, s.player.ColliderRadius()) {
+				s.player.TakeDamage(constants.ProjectileDamage)
+				continue // bullet consumed
+			}
+		} else { // treat all others as player bullets
+			hit := false
+			for _, e := range s.enemies {
+				if e.IsDead() {
+					continue
+				}
+				if physics.CircleCollision(b.Position, e.Position, projectiles.BulletRadius, e.ColliderRadius()) {
+					e.Health.Damage(constants.ProjectileDamage)
+					hit = true
+					break
+				}
+			}
+			if hit {
+				continue
+			}
+		}
+		remainingBullets = append(remainingBullets, b)
+	}
+
+	s.bullets = remainingBullets
+
+	// Remove dead enemies
+	var aliveEnemies []*enemies.Enemy
+	for _, e := range s.enemies {
+		if !e.IsDead() {
+			aliveEnemies = append(aliveEnemies, e)
+		}
+	}
+	s.enemies = aliveEnemies
 }

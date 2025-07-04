@@ -39,6 +39,7 @@ type Player struct {
 	position        math.Vector   // Current position in the game world (relative to center)
 	playerVelocity  float64       // Current movement speed in units per frame
 	curAcceleration float64       // Current acceleration rate
+	health          Health        // Player health information
 
 	// Fields for smooth movement and input handling
 	targetRotation float64   // Desired rotation angle the player is turning toward
@@ -64,6 +65,7 @@ func NewPlayer(world ecs.World) *Player {
 	p := &Player{
 		sprite: sprite,
 		world:  world,
+		health: NewHealth(constants.PlayerMaxHealth),
 		// Other fields will initialize to their zero values:
 		// - position: (0,0) vector
 		// - rotation: 0 radians (facing up)
@@ -151,6 +153,26 @@ func (p *Player) Draw(screen *ebiten.Image, cameraOffsetX, cameraOffsetY float64
 
 	// Draw the sprite with all transformations applied
 	screen.DrawImage(p.sprite, op)
+}
+
+// ColliderRadius returns the radius used for collision calculations.
+func (p *Player) ColliderRadius() float64 {
+	return 12.0
+}
+
+// Health returns the player's current health struct.
+func (p *Player) Health() Health {
+	return p.health
+}
+
+// TakeDamage reduces the player's health by the given amount.
+func (p *Player) TakeDamage(amount int) {
+	p.health.Damage(amount)
+}
+
+// IsDead reports whether the player has no health remaining.
+func (p *Player) IsDead() bool {
+	return p.health.IsDead()
 }
 
 // HandleTouchInput converts touch swipes to player rotation and velocity.
@@ -425,6 +447,13 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 	// Apply environmental physics effects
 	// This handles interactions with the game world like gravity wells
 	p.position = physics.ApplyGravity(p.position, p.playerVelocity, deltaTime)
+
+	// Prevent moving outside the world bounds
+	var collided bool
+	p.position, collided = physics.ClampToWorld(p.position, p.world)
+	if collided {
+		p.TakeDamage(constants.PlayerWallDamage)
+	}
 
 	return nil
 }

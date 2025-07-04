@@ -20,4 +20,9 @@ const (
 	MinSwipeDuration = 200 * time.Millisecond
 	// CurvePower controls how much the turning radius is affected by speed (higher = tighter turns at low speeds)
 	CurvePower = 1.7
+
+	// Player health values
+	PlayerMaxHealth  = 100
+	PlayerWallDamage = 5
+	ProjectileDamage = 25
 )
