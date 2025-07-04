@@ -33,10 +33,12 @@ const (
 // Bullets are automatically despawned after their lifetime expires or when
 // they collide with enemies or obstacles (handled by the collision system).
 type Bullet struct {
-	Position math.Vector // Current position in world coordinates relative to center
-	Rotation float64     // Current rotation in radians (0 = up, increases clockwise)
-	speed    float64     // Current speed in units per frame (increases over time)
-	lifetime float64     // Current lifetime in seconds (increases until max)
+	Position   math.Vector   // Current position in world coordinates relative to center
+	Rotation   float64       // Current rotation in radians (0 = up, increases clockwise)
+	speed      float64       // Current speed in units per frame (increases over time)
+	lifetime   float64       // Current lifetime in seconds (increases until max)
+	Image      *ebiten.Image // Sprite used to render the bullet
+	accelerate bool          // Whether the bullet accelerates each frame
 }
 
 // NewBullet creates a new bullet at the given position and rotation.
@@ -45,18 +47,34 @@ type Bullet struct {
 // constant and starting its lifetime at zero.
 //
 // Parameters:
-// - pos: The starting position vector for the bullet (typically the player's position
-//   or a position offset from the player to represent the weapon muzzle)
-// - rotation: The direction in which the bullet will travel, in radians
+//   - pos: The starting position vector for the bullet (typically the player's position
+//     or a position offset from the player to represent the weapon muzzle)
+//   - rotation: The direction in which the bullet will travel, in radians
 //
 // The created bullet is not automatically added to the game world;
 // the caller is responsible for storing and managing the returned bullet.
-func NewBullet(pos math.Vector, rotation float64) *Bullet {
+func NewBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bullet {
 	return &Bullet{
-		Position: pos,
-		Rotation: rotation,
-		speed:    bulletInitialSpeed, // Start with the base speed
-		lifetime: 0,                  // Initialize lifetime to zero
+		Position:   pos,
+		Rotation:   rotation,
+		speed:      bulletInitialSpeed, // Start with the base speed
+		lifetime:   0,                  // Initialize lifetime to zero
+		Image:      img,
+		accelerate: true,
+	}
+}
+
+// NewLinearBullet creates a bullet that moves with a constant speed.
+// The bullet does not accelerate over time, providing a simpler
+// movement pattern typically used by enemy projectiles.
+func NewLinearBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bullet {
+	return &Bullet{
+		Position:   pos,
+		Rotation:   rotation,
+		speed:      bulletInitialSpeed,
+		lifetime:   0,
+		Image:      img,
+		accelerate: false,
 	}
 }
 
@@ -77,10 +95,12 @@ func NewBullet(pos math.Vector, rotation float64) *Bullet {
 // - true if the bullet's lifetime has expired and it should be removed
 // - false if the bullet is still active and should continue to exist
 func (b *Bullet) Update(deltaTime float64) bool {
-	// Apply exponential acceleration to increase speed over time
+	// Apply exponential acceleration only if enabled
 	// The bulletAcceleration value is raised to the power of deltaTime*60.0
 	// to ensure consistent acceleration regardless of frame rate
-	b.speed *= stdmath.Pow(bulletAcceleration, deltaTime*60.0)
+	if b.accelerate {
+		b.speed *= stdmath.Pow(bulletAcceleration, deltaTime*60.0)
+	}
 
 	// Calculate movement vector based on rotation and speed
 	// sin(rotation) gives X component, cos(rotation) gives Y component
@@ -117,13 +137,17 @@ func (b *Bullet) Update(deltaTime float64) bool {
 // 4. Center the sprite on its origin point for accurate rotation
 // 5. Apply rotation based on the bullet's direction
 // 6. Calculate the final screen position considering:
-//    - World center
-//    - Bullet's position relative to center
-//    - Camera offset for scrolling
+//   - World center
+//   - Bullet's position relative to center
+//   - Camera offset for scrolling
+//
 // 7. Render the sprite to the screen
 func (b *Bullet) Draw(screen *ebiten.Image, offsetX, offsetY float64, worldWidth, worldHeight int) {
-	// Get the bullet sprite from assets
-	img := assets.PlayerBullet
+	// Use the bullet's image, defaulting to the player bullet if nil
+	img := b.Image
+	if img == nil {
+		img = assets.PlayerBullet
+	}
 
 	// Create transformation options for rendering
 	op := &ebiten.DrawImageOptions{}
@@ -146,9 +170,17 @@ func (b *Bullet) Draw(screen *ebiten.Image, offsetX, offsetY float64, worldWidth
 	centerX := float64(worldWidth) / 2
 	centerY := float64(worldHeight) / 2
 
-	// Calculate and apply the final screen position
-	// This combines the world center, bullet position, and camera offset
-	op.GeoM.Translate(centerX+b.Position.X+offsetX, centerY+b.Position.Y+offsetY)
+	// Calculate the screen position for this bullet
+	// 1. Start at the center of the screen
+	// 2. Add the bullet's world position (which is relative to center)
+	// 3. Apply the camera offset for scrolling
+	screenX := centerX + b.Position.X + offsetX
+	screenY := centerY + b.Position.Y + offsetY
+
+	// Move to the calculated position, adjusting for the scaling factor
+	// Since we're scaling by 0.5, we need to multiply the screen position by 2.0
+	// to compensate for the scaling effect on the translation
+	op.GeoM.Translate(screenX*2.0, screenY*2.0)
 
 	// Draw the bullet sprite with all transformations applied
 	screen.DrawImage(img, op)
