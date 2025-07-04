@@ -89,6 +89,7 @@ func (s *GameScene) Update(state *State) error {
 	}
 
 	s.handleShooting(state)
+	s.handleEnemyShooting(state)
 	var activeBullets []*projectiles.Bullet
 	for _, b := range s.bullets {
 		if !b.Update(state.DeltaTime) {
@@ -212,6 +213,8 @@ func (s *GameScene) Draw(screen *ebiten.Image, state *State) {
 }
 
 const fireInterval = 0.25
+const enemyFireInterval = 0.5
+const enemyShootRadius = 150.0
 
 // handleShooting manages bullet firing based on keyboard or touch input
 func (s *GameScene) handleShooting(state *State) {
@@ -239,9 +242,28 @@ func (s *GameScene) handleShooting(state *State) {
 	}
 }
 
+// handleEnemyShooting makes enemies fire bullets at the player when in range
+func (s *GameScene) handleEnemyShooting(state *State) {
+	playerPos := s.player.GetPosition()
+	for _, enemy := range s.enemies {
+		dx := playerPos.X - enemy.Position.X
+		dy := playerPos.Y - enemy.Position.Y
+		if dx*dx+dy*dy <= enemyShootRadius*enemyShootRadius {
+			enemy.TimeSinceLastShot += state.DeltaTime
+			if enemy.TimeSinceLastShot >= enemyFireInterval {
+				rot := stdmath.Atan2(dx, -dy)
+				s.bullets = append(s.bullets, projectiles.NewBullet(enemy.Position, rot, assets.EnemyBullet))
+				enemy.TimeSinceLastShot = 0
+			}
+		} else if enemy.TimeSinceLastShot > enemyFireInterval {
+			enemy.TimeSinceLastShot = enemyFireInterval
+		}
+	}
+}
+
 // spawnBullet creates a new bullet at the player's position with the player's rotation
 func (s *GameScene) spawnBullet() {
 	pos := s.player.GetPosition()
 	rot := s.player.GetRotation()
-	s.bullets = append(s.bullets, projectiles.NewBullet(pos, rot))
+	s.bullets = append(s.bullets, projectiles.NewBullet(pos, rot, assets.PlayerBullet))
 }

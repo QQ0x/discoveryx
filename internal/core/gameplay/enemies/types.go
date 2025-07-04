@@ -28,11 +28,12 @@ import (
 // and updating enemy state, while specific behaviors would be implemented
 // in the AI system.
 type Enemy struct {
-	Type      string        // Type of enemy (e.g., "Pilz", "Kristall", etc.)
-	Position  math.Vector   // Position in world coordinates relative to center
-	Rotation  float64       // Rotation angle in degrees (0-360)
-	Image     *ebiten.Image // Cached enemy sprite for rendering
-	ImagePath string        // Path to the enemy image in the assets system
+	Type              string        // Type of enemy (e.g., "Pilz", "Kristall", etc.)
+	Position          math.Vector   // Position in world coordinates relative to center
+	Rotation          float64       // Rotation angle in degrees (0-360)
+	Image             *ebiten.Image // Cached enemy sprite for rendering
+	ImagePath         string        // Path to the enemy image in the assets system
+	TimeSinceLastShot float64       // Time elapsed since the enemy last fired
 }
 
 // NewEnemy creates a new enemy with the specified parameters.
@@ -51,10 +52,11 @@ type Enemy struct {
 // the caller is responsible for storing and managing the returned enemy.
 func NewEnemy(enemyType string, x, y float64, rotation float64, imagePath string) *Enemy {
 	return &Enemy{
-		Type:      enemyType,
-		Position:  math.Vector{X: x, Y: y},
-		Rotation:  rotation,
-		ImagePath: imagePath,
+		Type:              enemyType,
+		Position:          math.Vector{X: x, Y: y},
+		Rotation:          rotation,
+		ImagePath:         imagePath,
+		TimeSinceLastShot: 0,
 	}
 }
 
@@ -65,9 +67,9 @@ func NewEnemy(enemyType string, x, y float64, rotation float64, imagePath string
 // 3. Any state changes or animations (in future implementations)
 //
 // The current implementation is intentionally simple:
-// - The image is loaded on first update if not already loaded
-// - A high velocity value is passed to ApplyGravity to prevent movement
-//   (since the physics system ignores gravity for high-velocity objects)
+//   - The image is loaded on first update if not already loaded
+//   - A high velocity value is passed to ApplyGravity to prevent movement
+//     (since the physics system ignores gravity for high-velocity objects)
 //
 // This method returns an error if the update fails, which can be used
 // to signal that the enemy should be removed or that the game should
@@ -108,9 +110,10 @@ func (e *Enemy) Update() error {
 // 4. Apply rotation based on the enemy's orientation
 // 5. Scale the sprite to the appropriate size
 // 6. Calculate the final screen position considering:
-//    - World center
-//    - Enemy's position relative to center
-//    - Camera offset for scrolling
+//   - World center
+//   - Enemy's position relative to center
+//   - Camera offset for scrolling
+//
 // 7. Apply the final position transformation
 // 8. Render the sprite to the screen
 func (e *Enemy) Draw(screen *ebiten.Image, offsetX, offsetY float64, worldWidth, worldHeight int) {
