@@ -252,7 +252,7 @@ func (s *GameScene) handleEnemyShooting(state *State) {
 			enemy.TimeSinceLastShot += state.DeltaTime
 			if enemy.TimeSinceLastShot >= enemyFireInterval {
 				rot := stdmath.Atan2(dx, -dy)
-				s.bullets = append(s.bullets, projectiles.NewBullet(enemy.Position, rot, assets.EnemyBullet))
+				s.bullets = append(s.bullets, projectiles.NewLinearBullet(enemy.Position, rot, assets.EnemyBullet))
 				enemy.TimeSinceLastShot = 0
 			}
 		} else if enemy.TimeSinceLastShot > enemyFireInterval {
