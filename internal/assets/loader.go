@@ -66,13 +66,41 @@ const (
 	StartBackgroundPath = "images/startScene/startpage_background.png"
 	PlayButtonPath      = "images/startScene/play_button.png"
 	GameBackgroundPath  = "images/gameScene/Background/background.png"
+	PlayerBulletPath    = "images/gameScene/Bullets/PlayerBullets/PlayerBullet_Single.png"
 )
 
 // Smaller assets loaded at startup
 var (
 	PlayerSprite = LoadImage(PlayerSpritePath)
 	PlayButton   = LoadImage(PlayButtonPath)
+	PlayerBullet = loadPlayerBullet()
 )
+
+// loadPlayerBullet loads the player bullet sprite from the exact path specified
+func loadPlayerBullet() *ebiten.Image {
+	// Use the exact path as specified in the issue description
+	exactPath := "images/gameScene/Bullets/PlayerBullets/PlayerBullet_Single.png"
+
+	println("Loading player bullet from exact path:", exactPath)
+
+	f, err := Assets.Open(exactPath)
+	if err != nil {
+		println("ERROR: Failed to open bullet image file:", err.Error())
+		panic(err)
+	}
+	defer f.Close()
+
+	img, format, err := image.Decode(f)
+	if err != nil {
+		println("ERROR: Failed to decode bullet image:", err.Error())
+		panic(err)
+	}
+
+	println("Successfully loaded bullet image. Format:", format)
+	println("Bullet image dimensions:", img.Bounds().Dx(), "x", img.Bounds().Dy())
+
+	return ebiten.NewImageFromImage(img)
+}
 
 // GetStartBackground returns the start background image, loading it if necessary
 func GetStartBackground() *ebiten.Image {

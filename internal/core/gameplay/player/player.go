@@ -22,6 +22,7 @@ type Player struct {
 	position        math.Vector
 	playerVelocity  float64 // Player speed
 	curAcceleration float64 // Current acceleration
+	weapons         *WeaponSystem // Weapon system for handling bullets
 
 	// Fields for smooth movement
 	targetRotation float64   // Target rotation angle
@@ -40,6 +41,9 @@ func NewPlayer(world ecs.World) *Player {
 		world:  world,
 	}
 
+	// Initialize the weapon system after player is created
+	p.weapons = NewWeaponSystem(p, world)
+
 	return p
 }
 
@@ -51,6 +55,11 @@ func (p *Player) GetPosition() math.Vector {
 // GetVelocity returns the player's current velocity
 func (p *Player) GetVelocity() float64 {
 	return p.playerVelocity
+}
+
+// GetRotation returns the player's current rotation
+func (p *Player) GetRotation() float64 {
+	return p.rotation
 }
 
 // SetPosition sets the player's position
@@ -91,6 +100,9 @@ func (p *Player) Draw(screen *ebiten.Image, cameraOffsetX, cameraOffsetY float64
 
 	// Draw sprite
 	screen.DrawImage(p.sprite, op)
+
+	// Draw bullets
+	p.weapons.Draw(screen, cameraOffsetX, cameraOffsetY)
 }
 
 // HandleTouchInput processes touch input for player movement
@@ -234,6 +246,9 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 	if touch != nil && touch.IsHolding() {
 		p.HandleTouchInput(touch)
 	}
+
+	// Update weapons system
+	p.weapons.Update(inputManager, deltaTime)
 
 	// Smooth rotation towards the target rotation with dynamic factor based
 	// on current velocity. Higher speeds rotate slower to create a curve.
