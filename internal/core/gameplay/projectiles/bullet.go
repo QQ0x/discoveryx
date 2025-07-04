@@ -22,6 +22,8 @@ const (
 	bulletInitialSpeed = 3.0  // Starting speed of bullets in units per frame
 	bulletAcceleration = 1.05 // Multiplicative acceleration factor per frame (5% increase)
 	bulletMaxLifetime  = 2.0  // Maximum lifetime in seconds before automatic despawn
+	// BulletRadius defines the radius used for collision checks.
+	BulletRadius = 4.0
 )
 
 // Bullet represents a projectile fired by the player.
