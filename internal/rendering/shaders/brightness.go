@@ -1,3 +1,20 @@
+// Package shaders provides GPU-accelerated visual effects for the game.
+// It implements various shader programs that can be applied to game scenes
+// to create atmospheric lighting, post-processing effects, and visual enhancements.
+//
+// The shaders in this package are written in the Kage shader language, which is
+// Ebiten's shader language based on a subset of Go. Each shader is encapsulated
+// in a struct that provides a clean interface for setting parameters and applying
+// the effect to game scenes.
+//
+// Key features of the shaders package:
+// - Performance-optimized GPU-based rendering
+// - Configurable parameters for customizing effects
+// - Frame-rate independent visual effects
+// - Support for both desktop and mobile platforms
+//
+// Common uses include creating lighting effects, visibility systems,
+// environmental atmospherics, and special visual effects for gameplay events.
 package shaders
 
 import (
@@ -7,6 +24,16 @@ import (
 // BrightnessShader provides a radial brightness effect around a focus point.
 // The brightness is 100% at the player's position and fades exponentially to 0% at the
 // specified radius, creating a very steep falloff effect.
+//
+// This shader is primarily used to create:
+// - A visibility/fog-of-war system where only areas near the player are fully visible
+// - Dynamic lighting effects that follow the player
+// - Atmospheric darkness that enhances the game's mood
+// - Visual indicators of special areas or events
+//
+// The exponential falloff creates a more realistic lighting effect than linear
+// or quadratic falloff, as it better simulates how light intensity diminishes
+// with distance in the real world.
 //
 // Usage:
 //

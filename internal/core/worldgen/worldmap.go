@@ -18,7 +18,7 @@ func (c *WorldCell) GetKey() string {
 	return fmt.Sprintf("%d,%d", c.X, c.Y)
 }
 
-// GetRotatedConnectors returns the connectors of this cell adjusted for rotation
+// GetRotatedConnectors returns the snippet connectors adjusted for cell rotation
 func (c *WorldCell) GetRotatedConnectors() []SnippetConnector {
 	if c.Rotation == 0 {
 		return c.Snippet.Connectors
@@ -26,7 +26,6 @@ func (c *WorldCell) GetRotatedConnectors() []SnippetConnector {
 
 	rotated := make([]SnippetConnector, len(c.Snippet.Connectors))
 	for i, conn := range c.Snippet.Connectors {
-		// Apply rotation to connector
 		rotated[i] = (conn + SnippetConnector(c.Rotation)) % 360
 	}
 	return rotated
@@ -73,25 +72,24 @@ func (m *WorldMap) HasCell(x, y int) bool {
 	return exists
 }
 
-// GetAdjacentCells returns the cells adjacent to the specified coordinates
+// GetAdjacentCells returns cells in the four cardinal directions (top, right, bottom, left)
 func (m *WorldMap) GetAdjacentCells(x, y int) []*WorldCell {
 	adjacent := make([]*WorldCell, 0, 4)
-	
-	// Check all four directions
+
 	directions := [][2]int{
 		{0, -1}, // Top
 		{1, 0},  // Right
 		{0, 1},  // Bottom
 		{-1, 0}, // Left
 	}
-	
+
 	for _, dir := range directions {
 		nx, ny := x+dir[0], y+dir[1]
 		if cell := m.GetCell(nx, ny); cell != nil {
 			adjacent = append(adjacent, cell)
 		}
 	}
-	
+
 	return adjacent
 }
 
