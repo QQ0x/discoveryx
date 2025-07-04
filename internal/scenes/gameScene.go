@@ -275,13 +275,20 @@ const fireInterval = 0.25
 
 // handleShooting spawns bullets when the space key is pressed.
 func (s *GameScene) handleShooting(state *State) {
-	if inpututil.IsKeyJustPressed(input.KeySpace) {
+	touch := state.Input.Touch()
+
+	if inpututil.IsKeyJustPressed(input.KeySpace) || (touch != nil && touch.IsFireJustSwiped()) {
 		s.spawnBullet()
 		s.timeSinceLastShot = 0
 		return
 	}
 
-	if state.Input.Keyboard().IsKeyPressed(input.KeySpace) {
+	holding := state.Input.Keyboard().IsKeyPressed(input.KeySpace)
+	if touch != nil && touch.IsFireHolding() {
+		holding = true
+	}
+
+	if holding {
 		s.timeSinceLastShot += state.DeltaTime
 		if s.timeSinceLastShot >= fireInterval {
 			s.spawnBullet()
