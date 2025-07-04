@@ -10,6 +10,7 @@ package enemies
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/core/physics"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -34,6 +35,7 @@ type Enemy struct {
 	Image             *ebiten.Image // Cached enemy sprite for rendering
 	ImagePath         string        // Path to the enemy image in the assets system
 	TimeSinceLastShot float64       // Time elapsed since the enemy last fired
+	Health            int           // Current health of the enemy
 }
 
 // NewEnemy creates a new enemy with the specified parameters.
@@ -57,6 +59,7 @@ func NewEnemy(enemyType string, x, y float64, rotation float64, imagePath string
 		Rotation:          rotation,
 		ImagePath:         imagePath,
 		TimeSinceLastShot: 0,
+		Health:            constants.EnemyMaxHealth,
 	}
 }
 
@@ -89,6 +92,20 @@ func (e *Enemy) Update() error {
 	e.Position = physics.ApplyGravity(e.Position, 100.0, 1.0/60.0)
 
 	return nil
+}
+
+// TakeDamage reduces the enemy's health by the given amount.
+// Health will not drop below zero.
+func (e *Enemy) TakeDamage(amount int) {
+	e.Health -= amount
+	if e.Health < 0 {
+		e.Health = 0
+	}
+}
+
+// IsDead returns true if the enemy's health has reached zero.
+func (e *Enemy) IsDead() bool {
+	return e.Health <= 0
 }
 
 // Draw renders the enemy on the screen with proper transformations.
