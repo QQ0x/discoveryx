@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-
 // Direction represents a swipe direction
 type Direction int
 
@@ -49,6 +48,11 @@ type TouchHandler interface {
 
 	// SetScreenDimensions sets the screen dimensions
 	SetScreenDimensions(width, height int)
+
+	// Right-half joystick methods for shooting
+	IsFireJustSwiped() bool
+	IsFireHolding() bool
+	GetFireJoystickPosition() (float64, float64)
 }
 
 // DefaultTouchHandler is the default implementation of TouchHandler
@@ -70,11 +74,21 @@ type DefaultTouchHandler struct {
 	currentSwipeSpeed  float64
 	activeTouchID      ebiten.TouchID
 	lastDirection      map[ebiten.TouchID]Direction
+
+	// Right-side joystick for firing
+	fireTouchID     ebiten.TouchID
+	fireInitialPos  struct{ x, y float64 }
+	fireCurrentPos  struct{ x, y float64 }
+	fireStartTime   time.Time
+	fireHolding     bool
+	fireJustSwiped  bool
+	fireJoystickPos struct{ x, y float64 }
+	fireDefaultPos  struct{ x, y float64 }
 }
 
 // NewTouchHandler creates a new default touch handler
 func NewTouchHandler() TouchHandler {
-	return &DefaultTouchHandler{
+	h := &DefaultTouchHandler{
 		initialTouchPos:    make(map[ebiten.TouchID]struct{ x, y float64 }),
 		currentTouchPos:    make(map[ebiten.TouchID]struct{ x, y float64 }),
 		lastSignificantPos: make(map[ebiten.TouchID]struct{ x, y float64 }),
@@ -90,6 +104,10 @@ func NewTouchHandler() TouchHandler {
 		currentSwipeSpeed:  0,
 		activeTouchID:      0,
 	}
+
+	h.fireDefaultPos = struct{ x, y float64 }{constants.ScreenWidth - 50, constants.ScreenHeight - 50}
+	h.fireJoystickPos = h.fireDefaultPos
+	return h
 }
 
 // IsSwipeDetected checks if a swipe in the given direction is detected
@@ -121,59 +139,78 @@ func (h *DefaultTouchHandler) GetSwipeInfo() SwipeInfo {
 	}
 }
 
+func (h *DefaultTouchHandler) IsFireJustSwiped() bool {
+	return h.fireJustSwiped
+}
+
+func (h *DefaultTouchHandler) IsFireHolding() bool {
+	return h.fireHolding
+}
+
+func (h *DefaultTouchHandler) GetFireJoystickPosition() (float64, float64) {
+	return h.fireJoystickPos.x, h.fireJoystickPos.y
+}
+
 // SetScreenDimensions sets the screen dimensions
 func (h *DefaultTouchHandler) SetScreenDimensions(width, height int) {
 	h.screenWidth = width
 	h.screenHeight = height
+	h.fireDefaultPos = struct{ x, y float64 }{float64(width) - 50, float64(height) - 50}
+	if h.fireTouchID == 0 {
+		h.fireJoystickPos = h.fireDefaultPos
+	}
 }
 
 // Update updates the touch handler state
 func (h *DefaultTouchHandler) Update() {
-	// Reset swipe detection for this frame
 	for dir := range h.detectedSwipes {
 		h.detectedSwipes[dir] = false
 	}
+	h.fireJustSwiped = false
 
-	// Use the stored screen dimensions
 	halfWidth := h.screenWidth / 2
 
-	// Get all active touch IDs
 	h.touchIDs = inpututil.AppendJustPressedTouchIDs(h.touchIDs[:0])
 
-	// Process new touches
 	for _, id := range h.touchIDs {
 		x, y := ebiten.TouchPosition(id)
+		if x >= halfWidth {
+			if h.fireTouchID == 0 {
+				h.fireTouchID = id
+				h.fireInitialPos = struct{ x, y float64 }{float64(x), float64(y)}
+				h.fireCurrentPos = h.fireInitialPos
+				h.fireStartTime = time.Now()
+				h.fireJoystickPos = h.fireInitialPos
+				h.fireHolding = false
+			}
+
+			if constants.DebugLogging {
+				log.Printf("Touch event detected on right half: ID=%d, Position=(%d, %d)", id, x, y)
+			}
+			continue
+		}
+
 		h.initialTouchPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 		h.currentTouchPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 		h.lastSignificantPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 		h.touchStartTime[id] = time.Now()
 		h.lastDirection[id] = DirectionNone
-
-		// Log touch events for right half of screen (if debug logging is enabled)
-  if constants.DebugLogging && x >= halfWidth {
-			log.Printf("Touch event detected on right half: ID=%d, Position=(%d, %d)", id, x, y)
-		}
 	}
 
-	// Process ongoing touches
 	for id := range h.initialTouchPos {
 		if inpututil.IsTouchJustReleased(id) {
-			// Clean up when touch is released
 			delete(h.initialTouchPos, id)
 			delete(h.currentTouchPos, id)
 			delete(h.lastSignificantPos, id)
 			delete(h.touchStartTime, id)
 			delete(h.lastDirection, id)
 
-			// Reset holding state when touch is released
 			for dir := range h.holdingDirection {
 				h.holdingDirection[dir] = false
 			}
 
-			// Reset the holding flag
 			h.isHolding = false
 
-			// Reset the active touch ID if this is the active touch
 			if id == h.activeTouchID {
 				h.activeTouchID = 0
 				h.currentSwipeAngle = 0
@@ -184,56 +221,34 @@ func (h *DefaultTouchHandler) Update() {
 			continue
 		}
 
-		// Update current position
 		x, y := ebiten.TouchPosition(id)
 		h.currentTouchPos[id] = struct{ x, y float64 }{float64(x), float64(y)}
 
-		// Skip processing for touches on the right half
-		if h.initialTouchPos[id].x >= float64(halfWidth) {
-			// Just log the movement for right half (if debug logging is enabled)
-			if constants.DebugLogging {
-				log.Printf("Touch movement on right half: ID=%d, Position=(%d, %d)", id, x, y)
-			}
-			continue
-		}
-
-		// Process touches on the left half
 		currentX := h.currentTouchPos[id].x
 		currentY := h.currentTouchPos[id].y
 
-		// Use lastSignificantPos for distance and angle calculations
 		referenceX := h.lastSignificantPos[id].x
 		referenceY := h.lastSignificantPos[id].y
 
-		// Calculate distance and direction
 		dx := currentX - referenceX
 		dy := currentY - referenceY
 		distance := math.Sqrt(dx*dx + dy*dy)
 
-		// Calculate angle (in radians)
 		angle := math.Atan2(dy, dx)
 
-		// Calculate speed (distance / time)
 		elapsed := time.Since(h.touchStartTime[id])
 		speed := distance / elapsed.Seconds()
 
-		// Store the previous swipe info for comparison
 		prevSwipeInfo := h.GetSwipeInfo()
 
-		// Detect swipe - only process if distance exceeds threshold
 		if distance >= h.swipeThreshold {
-			// Update swipe state in one block to reduce redundant operations
 			h.activeTouchID = id
 			h.swipeDistance = distance
 			h.currentSwipeAngle = angle
 			h.currentSwipeSpeed = speed
 			h.isHolding = true
 
-			// Simplified direction calculation
-			// Convert angle to degrees and normalize to 0-360
 			degrees := math.Mod(angle*180/math.Pi+360, 360)
-
-			// Determine cardinal direction using simplified calculation
 			var direction Direction
 			switch {
 			case degrees >= 315 || degrees < 45:
@@ -242,59 +257,47 @@ func (h *DefaultTouchHandler) Update() {
 				direction = DirectionDown
 			case degrees >= 135 && degrees < 225:
 				direction = DirectionLeft
-			default: // degrees >= 225 && degrees < 315
+			default:
 				direction = DirectionUp
 			}
 
-			// Check if this is a new swipe or continuing hold
 			if elapsed <= h.swipeDuration {
-				// This is a new swipe
 				h.detectedSwipes[direction] = true
-				if constants.DebugLogging {
-					log.Printf("Swipe detected: %v", direction)
-				}
 			}
 
-			// Set holding state for backward compatibility
 			h.holdingDirection[direction] = true
-			if constants.DebugLogging {
-				log.Printf("Holding direction: %v (angle=%f)", direction, angle)
-			}
 
-			// Only update reference point if there was a previous swipe and it has changed significantly
 			if prevSwipeInfo.Angle != 0 {
-				// Simplified check for significant changes - avoid unnecessary calculations
-				// Only calculate angle difference if distance isn't already large enough
 				needsUpdate := distance > 60
-
 				if !needsUpdate {
-					// Only calculate angle difference if we need to
 					angleDiff := math.Abs(angle - prevSwipeInfo.Angle)
 					needsUpdate = angleDiff > 0.2
 				}
-
-				// Update reference point if needed
 				if needsUpdate {
-					if constants.DebugLogging {
-						log.Printf("Swipe direction changed: %f -> %f (distance: %f)",
-							prevSwipeInfo.Angle, angle, distance)
-					}
-
-					// Update the lastSignificantPos to the current position
 					h.lastSignificantPos[id] = h.currentTouchPos[id]
 				}
 			}
 
-			// Update the last direction
 			h.lastDirection[id] = direction
+		}
+	}
 
-			// Simplified logging for swipe continuation/return
-			if constants.DebugLogging && prevSwipeInfo.Distance > 0 {
-				if distance > prevSwipeInfo.Distance {
-					log.Printf("Swipe continuing: distance increased from %f to %f", prevSwipeInfo.Distance, distance)
-				} else if distance < prevSwipeInfo.Distance {
-					log.Printf("Swipe returning: distance decreased from %f to %f", prevSwipeInfo.Distance, distance)
+	if h.fireTouchID != 0 {
+		if inpututil.IsTouchJustReleased(h.fireTouchID) {
+			h.fireTouchID = 0
+			h.fireHolding = false
+			h.fireJoystickPos = h.fireDefaultPos
+		} else {
+			x, y := ebiten.TouchPosition(h.fireTouchID)
+			h.fireCurrentPos = struct{ x, y float64 }{float64(x), float64(y)}
+			dx := h.fireCurrentPos.x - h.fireInitialPos.x
+			dy := h.fireCurrentPos.y - h.fireInitialPos.y
+			distance := math.Sqrt(dx*dx + dy*dy)
+			if distance >= h.swipeThreshold && !h.fireHolding {
+				if time.Since(h.fireStartTime) <= h.swipeDuration {
+					h.fireJustSwiped = true
 				}
+				h.fireHolding = true
 			}
 		}
 	}
