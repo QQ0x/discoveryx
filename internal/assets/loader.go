@@ -132,6 +132,7 @@ const (
 	PlayButtonPath      = "images/startScene/play_button.png"
 	GameBackgroundPath  = "images/gameScene/Background/background.png"
 	PlayerBulletPath    = "images/gameScene/Bullets/PlayerBullets/PlayerBullet_Single.png"
+	EnemyBulletPath     = "images/gameScene/Bullets/EnemyBullets/EnemyBullet_Single.png"
 )
 
 // Preloaded assets that are used frequently throughout the game.
@@ -146,6 +147,7 @@ var (
 	PlayerSprite = LoadImage(PlayerSpritePath) // The player's ship sprite
 	PlayButton   = LoadImage(PlayButtonPath)   // The play button on the start screen
 	PlayerBullet = LoadImage(PlayerBulletPath) // The player's bullet sprite
+	EnemyBullet  = LoadImage(EnemyBulletPath)  // The enemy's bullet sprite
 )
 
 // GetStartBackground returns the start background image, loading it if necessary.
