@@ -10,6 +10,7 @@ package projectiles
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/constants"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
@@ -39,6 +40,8 @@ type Bullet struct {
 	lifetime   float64       // Current lifetime in seconds (increases until max)
 	Image      *ebiten.Image // Sprite used to render the bullet
 	accelerate bool          // Whether the bullet accelerates each frame
+	FromPlayer bool          // Whether this bullet was fired by the player
+	Damage     int           // Damage dealt on hit
 }
 
 // NewBullet creates a new bullet at the given position and rotation.
@@ -57,10 +60,12 @@ func NewBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bullet {
 	return &Bullet{
 		Position:   pos,
 		Rotation:   rotation,
-		speed:      bulletInitialSpeed, // Start with the base speed
-		lifetime:   0,                  // Initialize lifetime to zero
+		speed:      bulletInitialSpeed,
+		lifetime:   0,
 		Image:      img,
 		accelerate: true,
+		FromPlayer: true,
+		Damage:     constants.PlayerBulletDamage,
 	}
 }
 
@@ -75,6 +80,8 @@ func NewLinearBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bull
 		lifetime:   0,
 		Image:      img,
 		accelerate: false,
+		FromPlayer: false,
+		Damage:     constants.EnemyBulletDamage,
 	}
 }
 

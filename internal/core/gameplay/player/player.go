@@ -39,6 +39,7 @@ type Player struct {
 	position        math.Vector   // Current position in the game world (relative to center)
 	playerVelocity  float64       // Current movement speed in units per frame
 	curAcceleration float64       // Current acceleration rate
+	Health          int           // Current health of the player
 
 	// Fields for smooth movement and input handling
 	targetRotation float64   // Desired rotation angle the player is turning toward
@@ -64,6 +65,7 @@ func NewPlayer(world ecs.World) *Player {
 	p := &Player{
 		sprite: sprite,
 		world:  world,
+		Health: constants.PlayerMaxHealth,
 		// Other fields will initialize to their zero values:
 		// - position: (0,0) vector
 		// - rotation: 0 radians (facing up)
@@ -111,6 +113,20 @@ func (p *Player) GetRotation() float64 {
 // - Cutscene positioning
 func (p *Player) SetPosition(position math.Vector) {
 	p.position = position
+}
+
+// TakeDamage reduces the player's health by the given amount.
+// Health will not drop below zero.
+func (p *Player) TakeDamage(amount int) {
+	p.Health -= amount
+	if p.Health < 0 {
+		p.Health = 0
+	}
+}
+
+// IsDead returns true if the player's health has reached zero.
+func (p *Player) IsDead() bool {
+	return p.Health <= 0
 }
 
 // Draw renders the player sprite to the screen with proper transformation.

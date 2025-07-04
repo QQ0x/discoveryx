@@ -98,6 +98,10 @@ func (s *GameScene) Update(state *State) error {
 	}
 	s.bullets = activeBullets
 
+	s.resolveBulletCollisions()
+	s.resolvePlayerWallCollision()
+	s.resolveEnemyDeaths()
+
 	position := s.player.GetPosition()
 	screenWidth := float64(state.World.GetWidth())
 	screenHeight := float64(state.World.GetHeight())
@@ -272,4 +276,91 @@ func (s *GameScene) spawnBullet() {
 	pos := s.player.GetPosition()
 	rot := s.player.GetRotation()
 	s.bullets = append(s.bullets, projectiles.NewBullet(pos, rot, assets.PlayerBullet))
+}
+
+// resolveBulletCollisions checks all bullets against enemies and the player.
+func (s *GameScene) resolveBulletCollisions() {
+	var remaining []*projectiles.Bullet
+	for _, b := range s.bullets {
+		collided := false
+		if b.FromPlayer {
+			for _, e := range s.enemies {
+				if distanceSquared(b.Position, e.Position) <= constants.BulletRadius*constants.BulletRadius+constants.EnemyRadius*constants.EnemyRadius {
+					e.TakeDamage(b.Damage)
+					collided = true
+					break
+				}
+			}
+		} else {
+			if distanceSquared(b.Position, s.player.GetPosition()) <= constants.BulletRadius*constants.BulletRadius+constants.PlayerRadius*constants.PlayerRadius {
+				s.player.TakeDamage(b.Damage)
+				collided = true
+			}
+		}
+
+		if s.bulletHitsWall(b.Position) {
+			collided = true
+		}
+
+		if !collided {
+			remaining = append(remaining, b)
+		}
+	}
+	s.bullets = remaining
+}
+
+// distanceSquared returns squared distance between two vectors.
+func distanceSquared(a, b math.Vector) float64 {
+	dx := a.X - b.X
+	dy := a.Y - b.Y
+	return dx*dx + dy*dy
+}
+
+// bulletHitsWall checks if a bullet collides with any nearby wall.
+func (s *GameScene) bulletHitsWall(pos math.Vector) bool {
+	cell := s.generatedWorld.GetCellAt(int(pos.X), int(pos.Y))
+	if cell == nil {
+		return false
+	}
+	walls := cell.GetWallsInWorldCoordinates()
+	for _, w := range walls {
+		dx := pos.X - w.X
+		dy := pos.Y - w.Y
+		if dx*dx+dy*dy <= constants.BulletRadius*constants.BulletRadius {
+			return true
+		}
+	}
+	return false
+}
+
+// resolvePlayerWallCollision prevents the player from moving through walls.
+func (s *GameScene) resolvePlayerWallCollision() {
+	pos := s.player.GetPosition()
+	cell := s.generatedWorld.GetCellAt(int(pos.X), int(pos.Y))
+	if cell == nil {
+		return
+	}
+	walls := cell.GetWallsInWorldCoordinates()
+	for _, w := range walls {
+		dx := pos.X - w.X
+		dy := pos.Y - w.Y
+		if dx*dx+dy*dy <= constants.PlayerRadius*constants.PlayerRadius {
+			// Push player out along wall normal
+			pos.X = w.X + w.Normal.X*constants.PlayerRadius
+			pos.Y = w.Y + w.Normal.Y*constants.PlayerRadius
+			s.player.TakeDamage(constants.WallCollisionDamage)
+		}
+	}
+	s.player.SetPosition(pos)
+}
+
+// resolveEnemyDeaths removes dead enemies from the scene.
+func (s *GameScene) resolveEnemyDeaths() {
+	var alive []*enemies.Enemy
+	for _, e := range s.enemies {
+		if !e.IsDead() {
+			alive = append(alive, e)
+		}
+	}
+	s.enemies = alive
 }
