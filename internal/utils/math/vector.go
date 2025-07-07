@@ -39,3 +39,21 @@ func (v Vector) Normalize() Vector {
 	magnitude := math.Sqrt(v.X*v.X + v.Y*v.Y)
 	return Vector{v.X / magnitude, v.Y / magnitude}
 }
+
+// Distance calculates the Euclidean distance between two vectors.
+// This is commonly used for:
+// - Collision detection
+// - Determining if objects are within range of each other
+// - Calculating movement distances
+// - Implementing spatial queries
+//
+// Parameters:
+// - v1, v2: The two vectors to calculate the distance between
+//
+// Returns:
+// - float64: The distance between the two vectors
+func Distance(v1, v2 Vector) float64 {
+	dx := v1.X - v2.X
+	dy := v1.Y - v2.Y
+	return math.Sqrt(dx*dx + dy*dy)
+}

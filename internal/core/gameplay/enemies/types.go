@@ -13,6 +13,7 @@ import (
 	"discoveryx/internal/core/physics"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
+	"image"
 	stdmath "math"
 )
 
@@ -34,6 +35,14 @@ type Enemy struct {
 	Image             *ebiten.Image // Cached enemy sprite for rendering
 	ImagePath         string        // Path to the enemy image in the assets system
 	TimeSinceLastShot float64       // Time elapsed since the enemy last fired
+
+	// Health and collision related fields
+	Health            float64       // Current health points
+	MaxHealth         float64       // Maximum health points
+	IsDying           bool          // Whether the enemy is in the death animation
+	DeathTimer        float64       // Timer for tracking death animation
+	ExplosionFrame    int           // Current frame of the explosion animation
+	ExplosionImage    *ebiten.Image // Explosion sprite sheet
 }
 
 // NewEnemy creates a new enemy with the specified parameters.
@@ -50,31 +59,80 @@ type Enemy struct {
 //
 // The created enemy is not automatically added to the game world;
 // the caller is responsible for storing and managing the returned enemy.
+// EnemyHealthByType maps enemy types to their maximum health values
+var EnemyHealthByType = map[string]float64{
+	"Pilz":     50.0,
+	"Kristall": 75.0,
+	"Default":  30.0,
+}
+
 func NewEnemy(enemyType string, x, y float64, rotation float64, imagePath string) *Enemy {
+	// Determine the maximum health based on enemy type
+	maxHealth := EnemyHealthByType["Default"]
+	if health, exists := EnemyHealthByType[enemyType]; exists {
+		maxHealth = health
+	}
+
 	return &Enemy{
 		Type:              enemyType,
 		Position:          math.Vector{X: x, Y: y},
 		Rotation:          rotation,
 		ImagePath:         imagePath,
 		TimeSinceLastShot: 0,
+
+		// Initialize health-related fields
+		Health:            maxHealth,
+		MaxHealth:         maxHealth,
+		IsDying:           false,
+		DeathTimer:        0,
+		ExplosionFrame:    0,
+		ExplosionImage:    nil, // Will be loaded when needed
 	}
 }
+
+// Constants for enemy behavior
+const (
+	ExplosionFrameCount = 8    // Number of frames in the explosion animation
+	ExplosionFrameTime  = 0.1  // Time per frame in seconds
+	ExplosionScale      = 1.0  // Scale factor for the explosion animation
+)
 
 // Update updates the enemy's state for the current frame.
 // This method is called once per frame for each active enemy and handles:
 // 1. Lazy loading of the enemy's sprite image (only when first needed)
 // 2. Physics interactions with the environment
-// 3. Any state changes or animations (in future implementations)
-//
-// The current implementation is intentionally simple:
-//   - The image is loaded on first update if not already loaded
-//   - A high velocity value is passed to ApplyGravity to prevent movement
-//     (since the physics system ignores gravity for high-velocity objects)
+// 3. Death animation if the enemy is dying
+// 4. Any state changes or animations
 //
 // This method returns an error if the update fails, which can be used
 // to signal that the enemy should be removed or that the game should
 // handle an error condition.
-func (e *Enemy) Update() error {
+//
+// Returns:
+// - bool: True if the enemy should be removed from the game, false otherwise
+func (e *Enemy) Update(deltaTime float64) bool {
+	// If the enemy is in the death animation
+	if e.IsDying {
+		// Load explosion image if not already loaded
+		if e.ExplosionImage == nil {
+			e.ExplosionImage = assets.GetImage("images/gameScene/Explosion/Explosion.png")
+		}
+
+		// Update death timer
+		e.DeathTimer += deltaTime
+
+		// Calculate current explosion frame based on timer
+		frameTime := e.DeathTimer / ExplosionFrameTime
+		e.ExplosionFrame = int(frameTime)
+
+		// If the animation is complete, signal that the enemy should be removed
+		if e.ExplosionFrame >= ExplosionFrameCount {
+			return true // Remove the enemy
+		}
+
+		return false // Keep the enemy until animation completes
+	}
+
 	// Load image if not already loaded - lazy initialization
 	// This defers image loading until actually needed and visible
 	if e.Image == nil {
@@ -85,10 +143,67 @@ func (e *Enemy) Update() error {
 	// Apply gravity to the enemy's position with a high velocity value (100.0)
 	// Since this is above the LowVelocityThreshold (10.0), gravity is NOT applied
 	// This ensures enemies stay at their original spawn positions
-	// The 1.0/60.0 parameter represents a time step of one frame at 60 FPS
-	e.Position = physics.ApplyGravity(e.Position, 100.0, 1.0/60.0)
+	// The deltaTime parameter represents a time step of one frame
+	e.Position = physics.ApplyGravity(e.Position, 100.0, deltaTime)
 
-	return nil
+	return false // Don't remove the enemy
+}
+
+// TakeDamage reduces the enemy's health by the specified amount.
+// If health reaches zero or below, the enemy starts its death animation.
+//
+// Parameters:
+// - amount: The amount of damage to take
+//
+// Returns:
+// - bool: True if the enemy died from this damage, false otherwise
+func (e *Enemy) TakeDamage(amount float64) bool {
+	// If already dying, ignore damage
+	if e.IsDying {
+		return false
+	}
+
+	// Reduce health by the damage amount
+	e.Health -= amount
+
+	// Check if the enemy has died
+	if e.Health <= 0 {
+		e.Health = 0
+		e.IsDying = true
+		e.DeathTimer = 0
+		e.ExplosionFrame = 0
+		return true
+	}
+
+	return false
+}
+
+// GetCollider returns a circular collider for the enemy.
+// This is used for collision detection with the player and projectiles.
+//
+// Returns:
+// - physics.CircleCollider: The enemy's collision area
+func (e *Enemy) GetCollider() physics.CircleCollider {
+	// Skip collision if the enemy is dying
+	if e.IsDying {
+		return physics.CircleCollider{Position: e.Position, Radius: 0}
+	}
+
+	// Ensure the image is loaded before using it for collision detection
+	if e.Image == nil {
+		e.Image = assets.GetImage(e.ImagePath)
+	}
+
+	// If the image is still nil (could happen if the asset doesn't exist),
+	// return a default collider with a reasonable radius
+	if e.Image == nil {
+		return physics.CircleCollider{
+			Position: e.Position,
+			Radius:   15.0, // Default radius for enemies
+		}
+	}
+
+	return physics.GetEntityCollider(e.Position, e.Image, 0.5)
 }
 
 // Draw renders the enemy on the screen with proper transformations.
@@ -96,7 +211,7 @@ func (e *Enemy) Update() error {
 // - Positioning relative to the world center and camera
 // - Rotation to match the enemy's orientation
 // - Scaling to the appropriate size
-// - Applying any visual effects (in future implementations)
+// - Death animation with explosion sprites
 //
 // Parameters:
 // - screen: The target image where the enemy should be drawn
@@ -104,19 +219,68 @@ func (e *Enemy) Update() error {
 // - worldWidth, worldHeight: Current dimensions of the game world
 //
 // The drawing process follows these steps:
-// 1. Skip rendering if the image hasn't been loaded yet
-// 2. Set up transformation options for proper rendering
-// 3. Center the sprite on its origin point for accurate rotation
-// 4. Apply rotation based on the enemy's orientation
-// 5. Scale the sprite to the appropriate size
-// 6. Calculate the final screen position considering:
+// 1. Check if the enemy is dying and render explosion animation if so
+// 2. Skip rendering if the image hasn't been loaded yet
+// 3. Set up transformation options for proper rendering
+// 4. Center the sprite on its origin point for accurate rotation
+// 5. Apply rotation based on the enemy's orientation
+// 6. Scale the sprite to the appropriate size
+// 7. Calculate the final screen position considering:
 //   - World center
 //   - Enemy's position relative to center
 //   - Camera offset for scrolling
 //
-// 7. Apply the final position transformation
-// 8. Render the sprite to the screen
+// 8. Apply the final position transformation
+// 9. Render the sprite to the screen
 func (e *Enemy) Draw(screen *ebiten.Image, offsetX, offsetY float64, worldWidth, worldHeight int) {
+	// If the enemy is dying, render the explosion animation
+	if e.IsDying {
+		// Skip rendering if the explosion image hasn't been loaded yet
+		if e.ExplosionImage == nil {
+			return
+		}
+
+		// Create transformation options for rendering
+		op := &ebiten.DrawImageOptions{}
+
+		// Calculate the dimensions of a single explosion frame
+		// The explosion sprite sheet is a horizontal strip of frames
+		explosionWidth := e.ExplosionImage.Bounds().Dx() / ExplosionFrameCount
+		explosionHeight := e.ExplosionImage.Bounds().Dy()
+
+		// Set the origin to the center of the explosion frame
+		op.GeoM.Translate(-float64(explosionWidth)/2, -float64(explosionHeight)/2)
+
+		// Apply scaling for the explosion
+		op.GeoM.Scale(ExplosionScale, ExplosionScale)
+
+		// Calculate the screen center
+		centerX := float64(worldWidth) / 2
+		centerY := float64(worldHeight) / 2
+
+		// Calculate the screen position for the explosion
+		screenX := centerX + e.Position.X + offsetX
+		screenY := centerY + e.Position.Y + offsetY
+
+		// Move to the calculated position, adjusting for the scaling factor
+		op.GeoM.Translate(screenX*(1/ExplosionScale), screenY*(1/ExplosionScale))
+
+		// Calculate the source rectangle for the current explosion frame
+		frameX := e.ExplosionFrame * explosionWidth
+		frameY := 0
+
+		// Draw the current explosion frame
+		screen.DrawImage(
+			e.ExplosionImage.SubImage(image.Rect(
+				frameX, frameY,
+				frameX+explosionWidth, frameY+explosionHeight,
+			)).(*ebiten.Image),
+			op,
+		)
+
+		return
+	}
+
 	// Skip rendering if the image hasn't been loaded yet
 	if e.Image == nil {
 		return

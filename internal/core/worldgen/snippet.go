@@ -2,6 +2,7 @@ package worldgen
 
 import (
 	"discoveryx/internal/assets"
+	"encoding/json"
 	"fmt"
 	"github.com/hajimehoshi/ebiten/v2"
 	"math/rand"
@@ -75,27 +76,25 @@ func NewSnippetRegistry() *SnippetRegistry {
 
 // LoadSnippets loads all snippet metadata and images from the specified directory
 func (r *SnippetRegistry) LoadSnippets(metadataDir, imageDir string) error {
-	// Define hardcoded metadata for all snippets
-	// This is necessary for iOS where file access is restricted
-	snippetMetadata := []SnippetMetadata{
-		{Filename: "Worldgen_x.png", Connectors: []int{}, Weight: 10}, // Empty snippet with no connectors
-		{Filename: "Worldgen_l.png", Connectors: []int{270}, Weight: 10},
-		{Filename: "Worldgen_l2.png", Connectors: []int{270}, Weight: 10},
-		{Filename: "Worldgen_lo.png", Connectors: []int{270, 0}, Weight: 10},
-		{Filename: "Worldgen_lo2.png", Connectors: []int{270, 0}, Weight: 10},
-		{Filename: "Worldgen_lou.png", Connectors: []int{270, 0, 180}, Weight: 10},
-		{Filename: "Worldgen_lou2.png", Connectors: []int{270, 0, 180}, Weight: 10},
-		{Filename: "Worldgen_lou3.png", Connectors: []int{270, 0, 180}, Weight: 10},
-		{Filename: "Worldgen_lr.png", Connectors: []int{270, 90}, Weight: 10},
-		{Filename: "Worldgen_lr2.png", Connectors: []int{270, 90}, Weight: 10},
-		{Filename: "Worldgen_lr3.png", Connectors: []int{270, 90}, Weight: 10},
-		{Filename: "Worldgen_lr4.png", Connectors: []int{270, 90}, Weight: 10},
-		{Filename: "Worldgen_lr5.png", Connectors: []int{270, 90}, Weight: 10},
-		{Filename: "Worldgen_lu.png", Connectors: []int{270, 180}, Weight: 10},
+	// Load metadata from JSON files
+	metadataFiles, err := assets.Assets.ReadDir(metadataDir)
+	if err != nil {
+		return fmt.Errorf("failed to read metadata directory: %w", err)
 	}
 
-	// Process each metadata entry
-	for _, metadata := range snippetMetadata {
+	// Process each metadata file
+	for _, metadataFile := range metadataFiles {
+		if filepath.Ext(metadataFile.Name()) != ".json" {
+			continue
+		}
+
+		// Load metadata from JSON file
+		metadataPath := filepath.Join(metadataDir, metadataFile.Name())
+		metadata, err := r.loadMetadata(metadataPath)
+		if err != nil {
+			return fmt.Errorf("failed to load metadata from %s: %w", metadataPath, err)
+		}
+
 		// Create WorldSnippet from metadata
 		snippet := &WorldSnippet{
 			Filename:   metadata.Filename,
@@ -109,11 +108,8 @@ func (r *SnippetRegistry) LoadSnippets(metadataDir, imageDir string) error {
 		}
 
 		// Load the image
-		imagePath := filepath.Join(imageDir, metadata.Filename)
-		img, err := r.loadImage(imagePath)
-		if err != nil {
-			return fmt.Errorf("failed to load image from %s: %w", imagePath, err)
-		}
+		imagePath := filepath.Join("images/gameScene/World", metadata.Filename)
+		img := assets.GetImage(imagePath)
 		snippet.Image = img
 
 		// Add to registry
@@ -123,19 +119,22 @@ func (r *SnippetRegistry) LoadSnippets(metadataDir, imageDir string) error {
 	return nil
 }
 
-// Note: loadMetadata method has been removed as we now use hardcoded metadata
+// loadMetadata loads a single metadata file
+func (r *SnippetRegistry) loadMetadata(path string) (*SnippetMetadata, error) {
+	// Read the metadata file
+	data, err := assets.Assets.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata file: %w", err)
+	}
 
-// loadImage loads a single image file
-func (r *SnippetRegistry) loadImage(path string) (*ebiten.Image, error) {
-	// Extract just the filename from the path
-	_, filename := filepath.Split(path)
+	// Parse the JSON data
+	var metadata SnippetMetadata
+	err = json.Unmarshal(data, &metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse metadata JSON: %w", err)
+	}
 
-	// Construct the path for the embedded filesystem
-	assetPath := filepath.Join("images/gameScene/World", filename)
-
-	// Use the assets package to load the image
-	img := assets.GetImage(assetPath)
-	return img, nil
+	return &metadata, nil
 }
 
 // addSnippet adds a snippet to the registry and indexes it

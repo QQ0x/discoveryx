@@ -10,18 +10,23 @@ package projectiles
 
 import (
 	"discoveryx/internal/assets"
+	"discoveryx/internal/core/physics"
 	"discoveryx/internal/utils/math"
 	"github.com/hajimehoshi/ebiten/v2"
 	stdmath "math"
 )
 
-// Bullet behavior constants control the movement and lifetime of bullets.
+// Bullet behavior constants control the movement, lifetime, and damage of bullets.
 // These values are carefully tuned to create a satisfying projectile feel
 // with bullets that start relatively slow but quickly accelerate.
 const (
 	bulletInitialSpeed = 3.0  // Starting speed of bullets in units per frame
 	bulletAcceleration = 1.05 // Multiplicative acceleration factor per frame (5% increase)
 	bulletMaxLifetime  = 2.0  // Maximum lifetime in seconds before automatic despawn
+
+	// Damage values for different bullet types
+	playerBulletDamage = 25.0 // Damage dealt by player bullets
+	enemyBulletDamage  = 15.0 // Damage dealt by enemy bullets
 )
 
 // Bullet represents a projectile fired by the player.
@@ -39,6 +44,8 @@ type Bullet struct {
 	lifetime   float64       // Current lifetime in seconds (increases until max)
 	Image      *ebiten.Image // Sprite used to render the bullet
 	accelerate bool          // Whether the bullet accelerates each frame
+	Damage     float64       // Amount of damage this bullet deals on hit
+	IsPlayerBullet bool      // Whether this bullet was fired by the player (true) or an enemy (false)
 }
 
 // NewBullet creates a new bullet at the given position and rotation.
@@ -53,28 +60,44 @@ type Bullet struct {
 //
 // The created bullet is not automatically added to the game world;
 // the caller is responsible for storing and managing the returned bullet.
-func NewBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bullet {
+func NewBullet(pos math.Vector, rotation float64, img *ebiten.Image, isPlayerBullet bool) *Bullet {
+	// Determine damage based on whether this is a player or enemy bullet
+	damage := enemyBulletDamage
+	if isPlayerBullet {
+		damage = playerBulletDamage
+	}
+
 	return &Bullet{
-		Position:   pos,
-		Rotation:   rotation,
-		speed:      bulletInitialSpeed, // Start with the base speed
-		lifetime:   0,                  // Initialize lifetime to zero
-		Image:      img,
-		accelerate: true,
+		Position:       pos,
+		Rotation:       rotation,
+		speed:          bulletInitialSpeed, // Start with the base speed
+		lifetime:       0,                  // Initialize lifetime to zero
+		Image:          img,
+		accelerate:     true,
+		Damage:         damage,
+		IsPlayerBullet: isPlayerBullet,
 	}
 }
 
 // NewLinearBullet creates a bullet that moves with a constant speed.
 // The bullet does not accelerate over time, providing a simpler
 // movement pattern typically used by enemy projectiles.
-func NewLinearBullet(pos math.Vector, rotation float64, img *ebiten.Image) *Bullet {
+func NewLinearBullet(pos math.Vector, rotation float64, img *ebiten.Image, isPlayerBullet bool) *Bullet {
+	// Determine damage based on whether this is a player or enemy bullet
+	damage := enemyBulletDamage
+	if isPlayerBullet {
+		damage = playerBulletDamage
+	}
+
 	return &Bullet{
-		Position:   pos,
-		Rotation:   rotation,
-		speed:      bulletInitialSpeed,
-		lifetime:   0,
-		Image:      img,
-		accelerate: false,
+		Position:       pos,
+		Rotation:       rotation,
+		speed:          bulletInitialSpeed,
+		lifetime:       0,
+		Image:          img,
+		accelerate:     false,
+		Damage:         damage,
+		IsPlayerBullet: isPlayerBullet,
 	}
 }
 
@@ -115,6 +138,25 @@ func (b *Bullet) Update(deltaTime float64) bool {
 	// Increment lifetime and check if it has expired
 	b.lifetime += deltaTime
 	return b.lifetime >= bulletMaxLifetime
+}
+
+// GetCollider returns a circular collider for the bullet.
+// This is used for collision detection with enemies, the player, and walls.
+//
+// Returns:
+// - physics.CircleCollider: The bullet's collision area
+func (b *Bullet) GetCollider() physics.CircleCollider {
+	// Use a smaller radius for bullets to make collision detection more precise
+	return physics.GetEntityCollider(b.Position, b.Image, 0.25)
+}
+
+// GetSpeed returns the current speed of the bullet.
+// This is used for continuous collision detection.
+//
+// Returns:
+// - float64: The bullet's current speed in units per frame
+func (b *Bullet) GetSpeed() float64 {
+	return b.speed
 }
 
 // Draw renders the bullet on the screen with proper transformations.

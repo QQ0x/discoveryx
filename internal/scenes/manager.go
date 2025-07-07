@@ -58,12 +58,12 @@ type State struct {
 // different game states to be encapsulated in separate Scene implementations
 // while providing a consistent interface for updating and rendering them.
 type SceneManager struct {
-	current         Scene             // The currently active scene
-	next            Scene             // The scene being transitioned to (if a transition is in progress)
-	transitionCount int               // Counter for tracking transition progress (0 = no transition)
-	transitionFrom  *ebiten.Image     // Render target for the current scene during transitions
-	transitionTo    *ebiten.Image     // Render target for the next scene during transitions
-	screenManager   *screen.Manager   // Reference to the screen manager for dimension information
+	current         Scene           // The currently active scene
+	next            Scene           // The scene being transitioned to (if a transition is in progress)
+	transitionCount int             // Counter for tracking transition progress (0 = no transition)
+	transitionFrom  *ebiten.Image   // Render target for the current scene during transitions
+	transitionTo    *ebiten.Image   // Render target for the next scene during transitions
+	screenManager   *screen.Manager // Reference to the screen manager for dimension information
 }
 
 // Draw renders the current scene or a transition between scenes.

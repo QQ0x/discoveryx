@@ -46,6 +46,12 @@ type Player struct {
 	lastSwipeTime  time.Time // Timestamp of the most recent touch swipe for timing calculations
 	lastSwipeAngle float64   // Direction of the most recent touch swipe for movement calculations
 	isMoving       bool      // Whether the player is actively being controlled (affects friction)
+
+	// Health and collision related fields
+	health             float64 // Current health points (0-100)
+	isInvincible       bool    // Whether the player is currently invincible after taking damage
+	invincibilityTimer float64 // Timer for tracking invincibility duration
+	shouldRender       bool    // Whether the player should be rendered (for invincibility flashing)
 }
 
 // NewPlayer creates a new player instance with default settings.
@@ -69,7 +75,16 @@ func NewPlayer(world ecs.World) *Player {
 		// - rotation: 0 radians (facing up)
 		// - velocity: 0 (stationary)
 		// - isMoving: false (not actively controlled)
+
+		// Initialize health-related fields
+		health:             MaxPlayerHealth,
+		isInvincible:       false,
+		invincibilityTimer: 0,
+		shouldRender:       true,
 	}
+
+	// Initialize the health system
+	p.AddHealthSystem()
 
 	return p
 }
@@ -92,6 +107,28 @@ func (p *Player) GetPosition() math.Vector {
 // - AI that reacts to player speed
 func (p *Player) GetVelocity() float64 {
 	return p.playerVelocity
+}
+
+// SetVelocity sets the player's velocity to the specified value.
+// This is used for:
+// - Wall bouncing
+// - Knockback effects
+// - Power-ups that affect speed
+// - Teleportation effects
+func (p *Player) SetVelocity(velocity float64) {
+	p.playerVelocity = velocity
+	p.targetVelocity = velocity
+}
+
+// SetRotation sets the player's rotation to the specified angle in radians.
+// This is used for:
+// - Wall bouncing
+// - Knockback effects
+// - Teleportation effects
+// - Cutscene positioning
+func (p *Player) SetRotation(rotation float64) {
+	p.rotation = rotation
+	p.targetRotation = rotation
 }
 
 // GetRotation returns the player's current rotation in radians.
@@ -407,7 +444,7 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 		dx := stdmath.Sin(p.rotation) * p.playerVelocity * deltaTime * 60.0
 		dy := stdmath.Cos(p.rotation) * -p.playerVelocity * deltaTime * 60.0
 
-		// Update position
+		// Update position - this will be checked for collisions in the game scene
 		p.position.X += dx
 		p.position.Y += dy
 	} else if !p.isMoving {
@@ -425,6 +462,9 @@ func (p *Player) Update(inputManager *input.Manager, deltaTime float64) error {
 	// Apply environmental physics effects
 	// This handles interactions with the game world like gravity wells
 	p.position = physics.ApplyGravity(p.position, p.playerVelocity, deltaTime)
+
+	// Update health-related state (invincibility frames, etc.)
+	p.UpdateHealthSystem(deltaTime)
 
 	return nil
 }
