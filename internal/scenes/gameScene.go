@@ -34,6 +34,9 @@ type GameScene struct {
 	shakeAmplitude float64 // Maximum shake amplitude in pixels
 	shakeFrequency float64 // Shake frequency in cycles per second
 	totalTime      float64 // Total elapsed time for time-based effects
+
+	// Collision resolution improvement
+	lastCollisionNormal math.Vector // Tracks the last collision normal to prevent oscillation
 }
 
 // NewGameScene creates a new game scene with the provided player
@@ -266,6 +269,7 @@ func (s *GameScene) CheckWallCollisionUsingWorldData(entity interface{}, planned
 	smallestDepth := 1000000.0
 	var separationVector math.Vector
 	var isXAxis bool
+	var selectedNormal math.Vector
 
 	for cellY := cellMinY; cellY <= cellMaxY; cellY++ {
 		for cellX := cellMinX; cellX <= cellMaxX; cellX++ {
@@ -309,7 +313,8 @@ func (s *GameScene) CheckWallCollisionUsingWorldData(entity interface{}, planned
 
 				// If the wall point is inside or very close to the AABB, we have a collision
 				// We use a small threshold to account for floating point errors
-				threshold := 1.0 // 1 pixel threshold
+				// Reduced threshold to prevent detecting barely touching edges as deep collisions
+				threshold := 0.5 // 0.5 pixel threshold (reduced from 1.0)
 				if (distX*distX + distY*distY) <= threshold*threshold {
 					collision = true
 
@@ -337,18 +342,30 @@ func (s *GameScene) CheckWallCollisionUsingWorldData(entity interface{}, planned
 						isCollisionXAxis = false
 					}
 
-					// If this is the smallest penetration depth so far, update the separation vector
-					if depth < smallestDepth {
+					// Check if this normal is opposite to the last collision normal
+					dotProduct := normal.X * s.lastCollisionNormal.X + normal.Y * s.lastCollisionNormal.Y
+					isOppositeToLast := dotProduct < -0.7 // Threshold for considering normals as opposite (roughly 135 degrees)
+
+					// If this is the smallest penetration depth so far and not opposite to the last normal
+					// or if it's significantly smaller than the current smallest depth, update the separation vector
+					if (depth < smallestDepth && (!isOppositeToLast || s.lastCollisionNormal.X == 0 && s.lastCollisionNormal.Y == 0)) || 
+					   (depth < smallestDepth * 0.8) { // If depth is at least 20% smaller, use it even if opposite
 						smallestDepth = depth
 						separationVector = math.Vector{
 							X: normal.X * depth,
 							Y: normal.Y * depth,
 						}
 						isXAxis = isCollisionXAxis
+						selectedNormal = normal // Store the selected normal for later use
 					}
 				}
 			}
 		}
+	}
+
+	// If a collision was detected, update the lastCollisionNormal field
+	if collision {
+		s.lastCollisionNormal = selectedNormal
 	}
 
 	return collision, separationVector, isXAxis
@@ -434,10 +451,14 @@ func (s *GameScene) Update(state *State) error {
 	// This handles cases where minimal overlaps might still occur due to player hitbox size
 	// We limit the number of iterations to prevent infinite loops when player is stuck between two walls
 	const maxIterations = 3 // Maximum number of collision resolution attempts
+	const minPositionChange = 0.01 // Minimum position change to continue iterations (in units)
+	const oscillationTolerance = 0.5 // Tolerance for detecting oscillation (in units)
 	var iterations int = 0
 	var finalPosition math.Vector
 	var finalCollision bool
 	var separationVector math.Vector
+	var previousPosition math.Vector
+	var positionHistory []math.Vector // Track position history to detect oscillation
 
 	// Try to resolve collisions up to maxIterations times
 	for iterations < maxIterations {
@@ -461,15 +482,89 @@ func (s *GameScene) Update(state *State) error {
 			Y: separationVector.Y / magnitude,
 		}
 
+		// Store the current position before correction
+		previousPosition = finalPosition
+
 		// Player is still inside a wall, push them out using ResolveCollision
 		// Use the magnitude of the separation vector as the depth
 		correctedPosition := physics.ResolveCollision(finalPosition, normalVector, magnitude)
 		s.player.SetPosition(correctedPosition)
 
+		// Calculate how much the position changed
+		positionChange := stdmath.Sqrt(
+			stdmath.Pow(correctedPosition.X-previousPosition.X, 2) +
+			stdmath.Pow(correctedPosition.Y-previousPosition.Y, 2))
+
 		// Debug output to help diagnose collision issues
 		if constants.DebugPlayerWallCollision {
-			fmt.Printf("Collision resolved (iteration %d): Player moved from (%.4f, %.4f) to (%.4f, %.4f)\n", 
-				iterations+1, finalPosition.X, finalPosition.Y, correctedPosition.X, correctedPosition.Y)
+			fmt.Printf("Collision resolved (iteration %d): Player moved from (%.4f, %.4f) to (%.4f, %.4f), change: %.4f\n", 
+				iterations+1, previousPosition.X, previousPosition.Y, correctedPosition.X, correctedPosition.Y, positionChange)
+		}
+
+		// Add current position to history
+		positionHistory = append(positionHistory, correctedPosition)
+
+		// Check for oscillation patterns
+		if len(positionHistory) >= 3 {
+			// Check for specific oscillation pattern (alternating between two positions)
+			oscillationDetected := false
+
+			if len(positionHistory) >= 4 {
+				// Check if we're alternating between two positions (A-B-A pattern)
+				// Get the last three positions
+				posA := positionHistory[len(positionHistory)-3]
+				posB := positionHistory[len(positionHistory)-2]
+				posC := positionHistory[len(positionHistory)-1]
+
+				// Calculate distances
+				distAC := stdmath.Sqrt(
+					stdmath.Pow(posA.X-posC.X, 2) +
+					stdmath.Pow(posA.Y-posC.Y, 2))
+
+				// If positions A and C are very close, we might be oscillating
+				if distAC < oscillationTolerance {
+					oscillationDetected = true
+					if constants.DebugPlayerWallCollision {
+						fmt.Printf("Oscillation pattern detected: Positions (%.4f, %.4f) and (%.4f, %.4f) are repeating\n",
+							posA.X, posA.Y, posB.X, posB.Y)
+					}
+				}
+			}
+
+			// Also check if current position is very close to any non-adjacent previous position
+			if !oscillationDetected && len(positionHistory) >= 3 {
+				for i := 0; i < len(positionHistory)-2; i++ {
+					oldPos := positionHistory[i]
+					distanceToOldPos := stdmath.Sqrt(
+						stdmath.Pow(correctedPosition.X-oldPos.X, 2) +
+						stdmath.Pow(correctedPosition.Y-oldPos.Y, 2))
+
+					if distanceToOldPos < oscillationTolerance {
+						oscillationDetected = true
+						if constants.DebugPlayerWallCollision {
+							fmt.Printf("Oscillation detected: Current position (%.4f, %.4f) is very close to previous position (%.4f, %.4f)\n",
+								correctedPosition.X, correctedPosition.Y, oldPos.X, oldPos.Y)
+						}
+						break
+					}
+				}
+			}
+
+			if oscillationDetected {
+				if constants.DebugPlayerWallCollision {
+					fmt.Printf("Breaking collision resolution due to detected oscillation\n")
+				}
+				break
+			}
+		}
+
+		// If position barely changed, break the loop
+		if positionChange < minPositionChange {
+			if constants.DebugPlayerWallCollision {
+				fmt.Printf("Breaking collision resolution: Position change (%.4f) below threshold (%.4f)\n", 
+					positionChange, minPositionChange)
+			}
+			break
 		}
 
 		iterations++

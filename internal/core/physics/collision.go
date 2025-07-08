@@ -152,9 +152,11 @@ func GetEntityCollider(position math.Vector, img *ebiten.Image, scale float64) C
 // - math.Vector: The new position after resolving the collision
 func ResolveCollision(position math.Vector, normal math.Vector, depth float64) math.Vector {
 	// Move the position along the normal vector by the overlap depth
+	// Apply a correction factor to prevent oscillation (use 95% of the full correction)
+	correctionFactor := 0.95
 	return math.Vector{
-		X: position.X + normal.X * depth,
-		Y: position.Y + normal.Y * depth,
+		X: position.X + normal.X * depth * correctionFactor,
+		Y: position.Y + normal.Y * depth * correctionFactor,
 	}
 }
 

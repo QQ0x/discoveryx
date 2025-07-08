@@ -136,7 +136,9 @@ func (p *Player) GetAABBCollider() physics.AABBCollider {
 }
 
 // CheckWallCollision checks if the player is colliding with a wall and handles the collision.
-// This method should be called in the Update method after updating the player's position.
+// DEPRECATED: This method uses circle-based collision detection which has been replaced by AABB-based
+// collision detection in GameScene.CheckWallCollisionUsingWorldData. This method is kept for
+// backward compatibility with tests but should not be used in the main game code.
 //
 // Parameters:
 // - walls: A slice of wall colliders to check against
@@ -144,6 +146,12 @@ func (p *Player) GetAABBCollider() physics.AABBCollider {
 // Returns:
 // - bool: True if a collision occurred, false otherwise
 func (p *Player) CheckWallCollision(walls []physics.RectCollider) bool {
+	// This method is deprecated and should not be used in the main game code.
+	// Use GameScene.CheckWallCollisionUsingWorldData instead, which uses AABB-based collision detection.
+	if constants.DebugPlayerWallCollision {
+		fmt.Printf("WARNING: Deprecated method Player.CheckWallCollision called. Use GameScene.CheckWallCollisionUsingWorldData instead.\n")
+	}
+
 	playerCollider := p.GetCollider()
 
 	for _, wall := range walls {
