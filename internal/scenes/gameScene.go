@@ -83,13 +83,69 @@ func (s *GameScene) Initialize(state *State) error {
 	objectTypes := []string{"enemy_1"}
 	s.enemies = enemies.SpawnObjectsOnWalls(s.generatedWorld, objectTypes, 1.0, 32.0)
 
-	if len(s.enemies) > 0 {
-		firstEnemyPos := s.enemies[0].Position
-		s.player.SetPosition(firstEnemyPos)
+	// Position the player on the main path first
+	if len(s.generatedWorld.GetWorldMap().MainPathCells) > 0 {
+		// Get a position from the middle of the main path
+		mainPathCells := s.generatedWorld.GetWorldMap().MainPathCells
+		startIdx := len(mainPathCells) / 2
+		mainPathCell := mainPathCells[startIdx]
+		mainPathPos := math.Vector{
+			X: float64(mainPathCell.X*worldgen.CellSize + worldgen.CellSize/2),
+			Y: float64(mainPathCell.Y*worldgen.CellSize + worldgen.CellSize/2),
+		}
+
+		// Set the player's initial position
+		s.player.SetPosition(mainPathPos)
 	}
 
-	// Register walls with the collision manager
+	// Register walls with the collision manager after positioning the player
 	s.registerWalls()
+
+	// Now try to find a better position for the player if needed
+	if len(s.generatedWorld.GetWorldMap().MainPathCells) > 0 {
+		// Try to find a valid spawn position on the main path
+		validPosition := false
+		mainPathCells := s.generatedWorld.GetWorldMap().MainPathCells
+
+		// Start from the middle of the path and try positions in both directions
+		startIdx := len(mainPathCells) / 2
+		offset := 0
+		maxTries := len(mainPathCells)
+
+		for tries := 0; tries < maxTries && !validPosition; tries++ {
+			// Alternate between moving forward and backward from the middle
+			idx := startIdx
+			if tries%2 == 0 {
+				idx = startIdx + offset
+				if idx >= len(mainPathCells) {
+					idx = len(mainPathCells) - 1
+				}
+			} else {
+				idx = startIdx - offset
+				if idx < 0 {
+					idx = 0
+				}
+				offset++
+			}
+
+			mainPathCell := mainPathCells[idx]
+			mainPathPos := math.Vector{
+				X: float64(mainPathCell.X*worldgen.CellSize + worldgen.CellSize/2),
+				Y: float64(mainPathCell.Y*worldgen.CellSize + worldgen.CellSize/2),
+			}
+
+			// Check if this position collides with any walls
+			collision, _, _ := s.collisionManager.CheckAABBWallCollision(s.player, mainPathPos)
+
+			if !collision {
+				// Found a valid position
+				s.player.SetPosition(mainPathPos)
+				validPosition = true
+			}
+		}
+
+		// If we couldn't find a valid position, we'll keep the initial position set earlier
+	}
 
 	// Register the player with the collision manager
 	s.collisionManager.RegisterEntity(s.player, s.player.GetCollider())
@@ -111,37 +167,56 @@ func (s *GameScene) registerWalls() {
 	// Create a wall collider generator with a minimum wall size of 10 units
 	wallGenerator := physics.NewWallColliderGenerator(10.0)
 
-	// Get all cells in the world
-	for y := 0; y < s.generatedWorld.GetHeight()/worldgen.CellSize; y++ {
-		for x := 0; x < s.generatedWorld.GetWidth()/worldgen.CellSize; x++ {
-			// Get the cell at this position
-			cell := s.generatedWorld.GetCellAt(x*worldgen.CellSize, y*worldgen.CellSize)
-			if cell == nil || cell.Snippet == nil {
+	// Get player position in cell coordinates
+	playerPos := s.player.GetPosition()
+	playerCellX := int(playerPos.X) / worldgen.CellSize
+	playerCellY := int(playerPos.Y) / worldgen.CellSize
+
+	// Convert player cell coordinates to chunk coordinates
+	playerChunkX := playerCellX / worldgen.ChunkSize
+	playerChunkY := playerCellY / worldgen.ChunkSize
+
+	// Use the same visibility radius as the world generator
+	chunkRadius := worldgen.VisibilityRadius
+
+	// Process all chunks in the visibility radius
+	for chunkY := playerChunkY - chunkRadius; chunkY <= playerChunkY+chunkRadius; chunkY++ {
+		for chunkX := playerChunkX - chunkRadius; chunkX <= playerChunkX+chunkRadius; chunkX++ {
+			// Get the chunk at these coordinates
+			chunk := s.generatedWorld.GetChunk(chunkX, chunkY)
+			if chunk == nil || !chunk.IsLoaded {
 				continue
 			}
 
-			// Get wall points in world coordinates
-			wallPoints := cell.GetWallsInWorldCoordinates()
-			if len(wallPoints) == 0 {
-				continue
-			}
-
-			// Convert wall points to physics.WallPoint
-			physicsWallPoints := make([]physics.WallPoint, len(wallPoints))
-			for i, wp := range wallPoints {
-				physicsWallPoints[i] = physics.WallPoint{
-					X:      wp.X,
-					Y:      wp.Y,
-					Normal: wp.Normal,
+			// Process all cells in this chunk
+			for _, cell := range chunk.Cells {
+				if cell == nil || cell.Snippet == nil {
+					continue
 				}
-			}
 
-			// Generate wall colliders
-			wallColliders := wallGenerator.GenerateWallColliders(physicsWallPoints, float64(worldgen.CellSize))
+				// Get wall points in world coordinates
+				wallPoints := cell.GetWallsInWorldCoordinates()
+				if len(wallPoints) == 0 {
+					continue
+				}
 
-			// Register wall colliders with the collision manager
-			for _, collider := range wallColliders {
-				s.collisionManager.RegisterWall(collider)
+				// Convert wall points to physics.WallPoint
+				physicsWallPoints := make([]physics.WallPoint, len(wallPoints))
+				for i, wp := range wallPoints {
+					physicsWallPoints[i] = physics.WallPoint{
+						X:      wp.X,
+						Y:      wp.Y,
+						Normal: wp.Normal,
+					}
+				}
+
+				// Generate wall colliders
+				wallColliders := wallGenerator.GenerateWallColliders(physicsWallPoints, float64(worldgen.CellSize))
+
+				// Register wall colliders with the collision manager
+				for _, collider := range wallColliders {
+					s.collisionManager.RegisterWall(collider)
+				}
 			}
 		}
 	}

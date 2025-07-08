@@ -4,7 +4,7 @@ package constants
 // Debug-related constants
 const (
 	// DebugLogging controls whether debug log messages are printed
-	DebugLogging = false
+	DebugLogging = true
 
 	// DebugCollision controls whether collision detection debug messages are printed
 	DebugCollision = true
