@@ -134,8 +134,8 @@ func (s *GameScene) Initialize(state *State) error {
 				Y: float64(mainPathCell.Y*worldgen.CellSize + worldgen.CellSize/2),
 			}
 
-			// Check if this position collides with any walls
-			collision, _, _ := s.collisionManager.CheckAABBWallCollision(s.player, mainPathPos)
+			// Check if this position collides with any walls using world data
+			collision, _, _ := s.CheckWallCollisionUsingWorldData(s.player, mainPathPos)
 
 			if !collision {
 				// Found a valid position
@@ -225,6 +225,135 @@ func (s *GameScene) registerWalls() {
 	s.collisionManager.OptimizeWalls()
 }
 
+// abs returns the absolute value of a float64
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// CheckWallCollisionUsingWorldData performs collision detection between an entity and walls using world generation data.
+// This is more efficient than using physics queries as it directly uses the tile information.
+func (s *GameScene) CheckWallCollisionUsingWorldData(entity interface{}, plannedPos math.Vector) (bool, math.Vector, bool) {
+	// Check if the entity implements GetAABBCollider
+	type aabbGetter interface {
+		GetAABBCollider() physics.AABBCollider
+	}
+
+	aabbEntity, ok := entity.(aabbGetter)
+	if !ok {
+		return false, math.Vector{}, false
+	}
+
+	// Get the entity's AABB collider
+	entityCollider := aabbEntity.GetAABBCollider()
+
+	// Calculate the entity's bounds
+	minX := plannedPos.X - entityCollider.Width/2
+	maxX := plannedPos.X + entityCollider.Width/2
+	minY := plannedPos.Y - entityCollider.Height/2
+	maxY := plannedPos.Y + entityCollider.Height/2
+
+	// Get the cells that the entity overlaps with
+	cellMinX := int(minX) / worldgen.CellSize
+	cellMaxX := int(maxX) / worldgen.CellSize
+	cellMinY := int(minY) / worldgen.CellSize
+	cellMaxY := int(maxY) / worldgen.CellSize
+
+	// Check each cell for wall collisions
+	collision := false
+	smallestDepth := 1000000.0
+	var separationVector math.Vector
+	var isXAxis bool
+
+	for cellY := cellMinY; cellY <= cellMaxY; cellY++ {
+		for cellX := cellMinX; cellX <= cellMaxX; cellX++ {
+			// Get the cell at these coordinates
+			cell := s.generatedWorld.GetCellAt(cellX*worldgen.CellSize, cellY*worldgen.CellSize)
+			if cell == nil || cell.Snippet == nil {
+				continue
+			}
+
+			// Get wall points in world coordinates
+			wallPoints := cell.GetWallsInWorldCoordinates()
+			if len(wallPoints) == 0 {
+				continue
+			}
+
+			// Check for collisions with each wall point
+			for _, wallPoint := range wallPoints {
+				// Calculate the distance from the wall point to the entity's AABB
+				// We need to check if the wall point is inside or close to the entity's AABB
+
+				// Calculate the closest point on the AABB to the wall point
+				// Clamp X value between minX and maxX
+				closestX := wallPoint.X
+				if closestX < minX {
+					closestX = minX
+				} else if closestX > maxX {
+					closestX = maxX
+				}
+
+				// Clamp Y value between minY and maxY
+				closestY := wallPoint.Y
+				if closestY < minY {
+					closestY = minY
+				} else if closestY > maxY {
+					closestY = maxY
+				}
+
+				// Calculate the distance from the wall point to the closest point on the AABB
+				distX := wallPoint.X - closestX
+				distY := wallPoint.Y - closestY
+
+				// If the wall point is inside or very close to the AABB, we have a collision
+				// We use a small threshold to account for floating point errors
+				threshold := 1.0 // 1 pixel threshold
+				if (distX*distX + distY*distY) <= threshold*threshold {
+					collision = true
+
+					// Calculate the penetration depth
+					depth := 0.0
+					normal := wallPoint.Normal
+					isCollisionXAxis := false
+
+					// Calculate penetration depth based on the normal direction
+					if abs(normal.X) > abs(normal.Y) {
+						// X-axis collision
+						if normal.X > 0 {
+							depth = maxX - wallPoint.X
+						} else {
+							depth = wallPoint.X - minX
+						}
+						isCollisionXAxis = true
+					} else {
+						// Y-axis collision
+						if normal.Y > 0 {
+							depth = maxY - wallPoint.Y
+						} else {
+							depth = wallPoint.Y - minY
+						}
+						isCollisionXAxis = false
+					}
+
+					// If this is the smallest penetration depth so far, update the separation vector
+					if depth < smallestDepth {
+						smallestDepth = depth
+						separationVector = math.Vector{
+							X: normal.X * depth,
+							Y: normal.Y * depth,
+						}
+						isXAxis = isCollisionXAxis
+					}
+				}
+			}
+		}
+	}
+
+	return collision, separationVector, isXAxis
+}
+
 // Update handles the game logic and camera movement for the scene
 func (s *GameScene) Update(state *State) error {
 	// Update total elapsed time
@@ -260,7 +389,7 @@ func (s *GameScene) Update(state *State) error {
 		Y: currentPosition.Y,
 	}
 
-	collisionX, separationVectorX, _ := s.collisionManager.CheckAABBWallCollision(s.player, plannedXPosition)
+	collisionX, separationVectorX, _ := s.CheckWallCollisionUsingWorldData(s.player, plannedXPosition)
 
 	// Apply X-axis movement if no collision
 	if collisionX {
@@ -284,7 +413,7 @@ func (s *GameScene) Update(state *State) error {
 		Y: updatedPosition.Y,
 	}
 
-	collisionY, separationVectorY, _ := s.collisionManager.CheckAABBWallCollision(s.player, plannedYPosition)
+	collisionY, separationVectorY, _ := s.CheckWallCollisionUsingWorldData(s.player, plannedYPosition)
 
 	// Apply Y-axis movement if no collision
 	if collisionY {
@@ -301,8 +430,29 @@ func (s *GameScene) Update(state *State) error {
 		})
 	}
 
+	// Final check to ensure player is not inside a wall
+	// This handles cases where minimal overlaps might still occur due to player hitbox size
+	finalPosition := s.player.GetPosition()
+	finalCollision, separationVector, _ := s.CheckWallCollisionUsingWorldData(s.player, finalPosition)
+
+	if finalCollision {
+		// Calculate the normal vector (normalized direction of the separation vector)
+		magnitude := stdmath.Sqrt(separationVector.X*separationVector.X + separationVector.Y*separationVector.Y)
+		if magnitude > 0 {
+			normalVector := math.Vector{
+				X: separationVector.X / magnitude,
+				Y: separationVector.Y / magnitude,
+			}
+
+			// Player is still inside a wall, push them out using ResolveCollision
+			// Use the magnitude of the separation vector as the depth
+			correctedPosition := physics.ResolveCollision(finalPosition, normalVector, magnitude)
+			s.player.SetPosition(correctedPosition)
+		}
+	}
+
 	// If there was a collision, reduce the player's velocity
-	if collisionX || collisionY {
+	if collisionX || collisionY || finalCollision {
 		// Reduce velocity to simulate friction with the wall
 		currentVelocity := s.player.GetVelocity()
 		s.player.SetVelocity(currentVelocity * 0) // 50% of original velocity

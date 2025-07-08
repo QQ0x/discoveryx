@@ -111,6 +111,15 @@ func (ecs *EbitenCollisionSystem) UpdateShape(id int, shape Shape) {
 		return
 	}
 
+	// Store the old position for spatial hash update
+	var oldX, oldY float64
+	switch o := obj.(type) {
+	case *collisions.Circle:
+		oldX, oldY = o.X, o.Y
+	case *collisions.Rectangle:
+		oldX, oldY = o.X, o.Y
+	}
+
 	// Update the object based on the shape type
 	switch shape.GetType() {
 	case ShapeTypeCircle:
@@ -148,15 +157,15 @@ func (ecs *EbitenCollisionSystem) UpdateShape(id int, shape Shape) {
 		panic(fmt.Sprintf("Unsupported shape type: %v", shape.GetType()))
 	}
 
+	// Update the spatial hash
+	ecs.space.UpdateShape(obj, oldX, oldY)
+
 	// Update our shape map
 	ecs.shapes[id] = shape
 }
 
 // Resolve checks for collisions and returns a list of collisions.
 func (ecs *EbitenCollisionSystem) Resolve(filter CollisionFilter) ([]Collision, error) {
-	// Update the space to check for collisions
-	ecs.space.Update()
-
 	// Get all collisions from the space
 	var collisions []Collision
 
@@ -312,9 +321,6 @@ func (ecs *EbitenCollisionSystem) GetNearbyShapes(position math.Vector, radius f
 
 	// Add the circle to the space
 	ecs.space.Add(circle)
-
-	// Update the space
-	ecs.space.Update()
 
 	// Get all objects that collide with the circle
 	colliding := ecs.space.GetCollisions(circle)
