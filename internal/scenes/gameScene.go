@@ -432,31 +432,64 @@ func (s *GameScene) Update(state *State) error {
 
 	// Final check to ensure player is not inside a wall
 	// This handles cases where minimal overlaps might still occur due to player hitbox size
-	finalPosition := s.player.GetPosition()
-	finalCollision, separationVector, _ := s.CheckWallCollisionUsingWorldData(s.player, finalPosition)
+	// We limit the number of iterations to prevent infinite loops when player is stuck between two walls
+	const maxIterations = 3 // Maximum number of collision resolution attempts
+	var iterations int = 0
+	var finalPosition math.Vector
+	var finalCollision bool
+	var separationVector math.Vector
 
-	if finalCollision {
+	// Try to resolve collisions up to maxIterations times
+	for iterations < maxIterations {
+		finalPosition = s.player.GetPosition()
+		finalCollision, separationVector, _ = s.CheckWallCollisionUsingWorldData(s.player, finalPosition)
+
+		if !finalCollision {
+			// No collision, we're done
+			break
+		}
+
 		// Calculate the normal vector (normalized direction of the separation vector)
 		magnitude := stdmath.Sqrt(separationVector.X*separationVector.X + separationVector.Y*separationVector.Y)
-		if magnitude > 0 {
-			normalVector := math.Vector{
-				X: separationVector.X / magnitude,
-				Y: separationVector.Y / magnitude,
-			}
-
-			// Player is still inside a wall, push them out using ResolveCollision
-			// Use the magnitude of the separation vector as the depth
-			correctedPosition := physics.ResolveCollision(finalPosition, normalVector, magnitude)
-			s.player.SetPosition(correctedPosition)
+		if magnitude <= 0 {
+			// Invalid magnitude, can't resolve
+			break
 		}
+
+		normalVector := math.Vector{
+			X: separationVector.X / magnitude,
+			Y: separationVector.Y / magnitude,
+		}
+
+		// Player is still inside a wall, push them out using ResolveCollision
+		// Use the magnitude of the separation vector as the depth
+		correctedPosition := physics.ResolveCollision(finalPosition, normalVector, magnitude)
+		s.player.SetPosition(correctedPosition)
+
+		// Debug output to help diagnose collision issues
+		if constants.DebugPlayerWallCollision {
+			fmt.Printf("Collision resolved (iteration %d): Player moved from (%.4f, %.4f) to (%.4f, %.4f)\n", 
+				iterations+1, finalPosition.X, finalPosition.Y, correctedPosition.X, correctedPosition.Y)
+		}
+
+		iterations++
+	}
+
+	// If we hit the iteration limit, log it for debugging
+	if iterations == maxIterations && constants.DebugPlayerWallCollision {
+		fmt.Printf("WARNING: Hit maximum collision resolution iterations (%d). Player may be stuck.\n", maxIterations)
 	}
 
 	// If there was a collision, reduce the player's velocity
 	if collisionX || collisionY || finalCollision {
 		// Reduce velocity to simulate friction with the wall
 		currentVelocity := s.player.GetVelocity()
-		s.player.SetVelocity(currentVelocity * 0) // 50% of original velocity
-		fmt.Println("SET TO ZEEEEEEROOOO")
+		s.player.SetVelocity(currentVelocity * 0) // Set to zero to prevent further movement into walls
+
+		// Debug output for collision velocity adjustment
+		if constants.DebugPlayerWallCollision {
+			fmt.Printf("Wall collision detected: Player velocity reduced from %.2f to 0\n", currentVelocity)
+		}
 	}
 
 	// Update the player's collider in the collision manager
